@@ -1,0 +1,25 @@
+dataset:
+  # Ruta relativa al repositorio. Cambiar este valor si el archivo .sav esta
+  # ubicado en otra carpeta o con otro nombre.
+  path: "datasets/15 atributos R0-R5.sav"
+
+outputs:
+  root: "outputs"
+  tables: "outputs/tables"
+  confusion_matrices: "outputs/confusion_matrices"
+  per_class: "outputs/per_class"
+
+experiment:
+  targets:
+    - "GDS"
+    - "GDS_R1"
+    - "GDS_R2"
+    - "GDS_R3"
+    - "GDS_R4"
+    - "GDS_R5"
+  max_outer_folds: 5
+  max_inner_folds: 3
+  outer_random_state: 42
+  inner_random_state: 123
+  n_jobs: -1
+  scoring: "f1_macro"
