@@ -74,6 +74,13 @@ def unimplemented_result(
         "labels": sorted(distribution),
         "confusion_matrix": None,
         "classification_report": None,
+        "best_scores_internal": None,
+        "best_score_internal_mean": None,
+        "best_score_internal_std": None,
+        "fold_metrics": None,
+        "fold_f1_external": None,
+        "fold_delta_sesgo": None,
+        "delta_sesgo": None,
     }
 
 
@@ -83,7 +90,8 @@ def run_nested_cv(
     target_name: str,
     model_spec: ModelSpec,
     config: dict[str, Any],
-) -> dict[str, Any]:
+    return_estimators: bool = False,
+) -> dict[str, Any] | tuple[dict[str, Any], list]:
     distribution = class_distribution(y)
     n_min, k_outer = compute_outer_folds(y, config["max_outer_folds"])
     if not model_spec.implemented:
@@ -106,6 +114,8 @@ def run_nested_cv(
     all_pred: list[int] = []
     best_params_counter: Counter[str] = Counter()
     result_warnings: list[str] = []
+    fold_best_scores: list[float] = []
+    fold_best_estimators: list = [] if return_estimators else None
 
     for fold_idx, (train_idx, test_idx) in enumerate(outer_cv.split(X, y), start=1):
         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
@@ -137,6 +147,10 @@ def run_nested_cv(
                 message = str(warning_item.message)
                 if message not in result_warnings:
                     result_warnings.append(message)
+
+        fold_best_scores.append(search.best_score_)
+        if return_estimators and fold_best_estimators is not None:
+            fold_best_estimators.append(search.best_estimator_)
 
         y_pred = search.predict(X_test)
         y_test_list = [int(value) for value in y_test.to_list()]
@@ -181,8 +195,19 @@ def run_nested_cv(
         result[f"{metric_name}_mean"] = float(metrics_df[metric_name].mean())
         result[f"{metric_name}_std"] = float(metrics_df[metric_name].std(ddof=1)) if len(metrics_df) > 1 else 0.0
 
+    fold_f1_external = [m["f1_macro"] for m in fold_metrics]
+    result["best_scores_internal"] = fold_best_scores
+    result["best_score_internal_mean"] = float(np.mean(fold_best_scores))
+    result["best_score_internal_std"] = float(np.std(fold_best_scores, ddof=1)) if len(fold_best_scores) > 1 else 0.0
+    result["fold_metrics"] = fold_metrics
+    result["fold_f1_external"] = fold_f1_external
+    result["fold_delta_sesgo"] = [i - e for i, e in zip(fold_best_scores, fold_f1_external)]
+    result["delta_sesgo"] = float(np.mean(result["fold_delta_sesgo"]))
+
     result["stability"] = float(max(0.0, min(1.0, 1.0 - result["f1_macro_std"])))
     result["icn"] = None
+    if return_estimators:
+        return result, fold_best_estimators
     return result
 
 
@@ -289,3 +314,13 @@ def _best_params_mode(counter: Counter[str]) -> str:
     value, count = counter.most_common(1)[0]
     total = sum(counter.values())
     return f"{value} ({count}/{total})"
+
+
+def compute_delta_sesgo(results: list[dict[str, Any]]) -> None:
+    for item in results:
+        if not item.get("implemented", False):
+            continue
+        internal = item.get("best_score_internal_mean")
+        external = item.get("f1_macro_mean")
+        if internal is not None and external is not None:
+            item["delta_sesgo"] = internal - external
