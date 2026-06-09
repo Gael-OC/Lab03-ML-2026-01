@@ -51,9 +51,7 @@ def run_advanced_analysis(
     print(f"[analysis] completo. Figuras en {figures_dir}")
 
 
-# ---------------------------------------------------------------------------
-# 4.2  Learning curves
-# ---------------------------------------------------------------------------
+# Curvas de aprendizaje
 
 def analyze_learning_curves(df: pd.DataFrame, output_dir: Path) -> None:
     registry = build_model_registry(random_state=42)
@@ -109,10 +107,7 @@ def analyze_learning_curves(df: pd.DataFrame, output_dir: Path) -> None:
     fig.savefig(output_dir / "learning_curves.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
 
-
-# ---------------------------------------------------------------------------
-# 4.3  Feature importance
-# ---------------------------------------------------------------------------
+# Importancia de atributos
 
 def analyze_feature_importance(df: pd.DataFrame, output_dir: Path) -> None:
     registry = build_model_registry(random_state=42)
@@ -168,9 +163,7 @@ def analyze_feature_importance(df: pd.DataFrame, output_dir: Path) -> None:
         plt.close(fig)
 
 
-# ---------------------------------------------------------------------------
-# 4.4  Hyperparameter stability
-# ---------------------------------------------------------------------------
+# Estabilidad de hiperparámetros
 
 def analyze_hyperparameter_stability(results_by_target: dict, output_dir: Path) -> None:
     for target, results in results_by_target.items():
@@ -209,9 +202,7 @@ def analyze_hyperparameter_stability(results_by_target: dict, output_dir: Path) 
         plt.close(fig)
 
 
-# ---------------------------------------------------------------------------
-# 4.5  Zero-recall classes
-# ---------------------------------------------------------------------------
+# Clases con recall cero
 
 def detect_zero_recall_classes(
     results_by_target: dict,
@@ -269,9 +260,7 @@ def detect_zero_recall_classes(
     plt.close(fig)
 
 
-# ---------------------------------------------------------------------------
-# 4.6  Low-support classes
-# ---------------------------------------------------------------------------
+# Clases con soporte bajo
 
 def detect_low_support_classes(
     results_by_target: dict,
@@ -312,9 +301,7 @@ def detect_low_support_classes(
     ls_df.to_csv(tables_dir / "low_support_classes.csv", index=False, encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
-# 4.7  Decision tree visualization
-# ---------------------------------------------------------------------------
+# Visualización del árbol de decisión
 
 def visualize_decision_trees(df: pd.DataFrame, output_dir: Path) -> None:
     from sklearn.tree import DecisionTreeClassifier
@@ -347,9 +334,7 @@ def visualize_decision_trees(df: pd.DataFrame, output_dir: Path) -> None:
         plt.close(fig)
 
 
-# ---------------------------------------------------------------------------
-# 4.8  Per-fold stability
-# ---------------------------------------------------------------------------
+# Estabilidad por fold
 
 def analyze_per_fold_stability(results_by_target: dict, output_dir: Path) -> None:
     n_targets = len(TARGETS)
