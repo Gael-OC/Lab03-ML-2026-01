@@ -145,8 +145,9 @@ def run_nested_cv(
             search.fit(X_train, y_train)
             for warning_item in caught_warnings:
                 message = str(warning_item.message)
-                if message not in result_warnings:
-                    result_warnings.append(message)
+                if "fork()" in message or message in result_warnings:
+                    continue
+                result_warnings.append(message)
 
         fold_best_scores.append(search.best_score_)
         if return_estimators and fold_best_estimators is not None:
