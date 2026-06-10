@@ -6,6 +6,7 @@ dataset:
 outputs:
   root: "outputs"
   tables: "outputs/tables"
+  figures: "outputs/figures"
   confusion_matrices: "outputs/confusion_matrices"
   per_class: "outputs/per_class"
 

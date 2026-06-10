@@ -20,11 +20,12 @@ SUMMARY_COLUMNS = [
     "precision_macro_mean",
     "stability",
     "icn",
+    "delta_sesgo",
     "best_params_mode",
     "message",
 ]
 
-PLAIN_TABLE_WIDTHS = [21, 16, 15, 15, 15, 15, 15, 28]
+PLAIN_TABLE_WIDTHS = [21, 14, 14, 14, 14, 12, 12, 12, 25]
 
 
 def write_summary_csv(results_by_target: dict[str, list[dict[str, Any]]], output_path: Path) -> None:
@@ -82,8 +83,8 @@ def write_latex_tables(results_by_target: dict[str, list[dict[str, Any]]], outpu
         r"\begin{document}",
         r"\section*{Laboratorio 03: resultados de validacion cruzada anidada}",
         (
-            "Solo Regresi\\'on Log\\'istica esta implementada. "
-            "Los dem\\'as clasificadores se reportan como \\textit{No implementado}."
+            "Los 5 clasificadores est\\'an implementados. "
+            "Se reportan promedios y desviaciones sobre los folds externos."
         ),
         "",
     ]
@@ -100,9 +101,9 @@ def write_latex_tables(results_by_target: dict[str, list[dict[str, Any]]], outpu
                 r"\centering",
                 rf"\caption{{Resultados para {latex_escape(target)}}}",
                 r"\scriptsize",
-                r"\begin{tabular}{p{2.8cm}p{2.0cm}p{1.6cm}p{1.6cm}p{1.8cm}p{1.5cm}p{1.4cm}p{3.4cm}}",
+                r"\begin{tabular}{p{2.5cm}p{1.8cm}p{1.5cm}p{1.5cm}p{1.7cm}p{1.4cm}p{1.3cm}p{1.3cm}p{3.0cm}}",
                 r"\toprule",
-                r"Modelo & F1 macro & Balanced Acc. & Recall macro & Precision macro & Estab. & ICN & Hiperparametros / estado \\",
+                r"Modelo & F1 macro & BalAcc & Recall & Precision & Estab. & ICN & $\Delta$sesgo & Hiperparámetros / estado \\",
                 r"\midrule",
             ]
         )
@@ -125,7 +126,7 @@ def write_pdf_tables(results_by_target: dict[str, list[dict[str, Any]]], output_
     pages: list[list[str]] = []
     current: list[str] = [
         "Laboratorio 03: resultados de validacion cruzada anidada",
-        "Solo Regresion Logistica esta implementada; el resto aparece como No implementado.",
+        "Los 5 clasificadores estan implementados. Se reportan promedios y desviaciones sobre folds externos.",
         "",
     ]
 
@@ -178,7 +179,7 @@ def _latex_row(item: dict[str, Any]) -> str:
         status = latex_escape(item["status"])
         return (
             f"{model} & {status} & {status} & {status} & {status} & "
-            f"{status} & {status} & {latex_escape(item['message'])} \\\\"
+            f"{status} & {status} & {status} & {latex_escape(item['message'])} \\\\"
         )
 
     return (
@@ -189,6 +190,7 @@ def _latex_row(item: dict[str, Any]) -> str:
         f"{_format_float(item['precision_macro_mean'])} & "
         f"{_format_float(item['stability'])} & "
         f"{_format_float(item['icn'])} & "
+        f"{_format_float(item.get('delta_sesgo'))} & "
         f"{latex_escape(item['best_params_mode'])} \\\\"
     )
 
@@ -199,7 +201,7 @@ def _plain_table_block(target: str, results: list[dict[str, Any]]) -> list[str]:
         f"Experimento {target}",
         f"Distribucion: {distribution} | n_min={results[0]['n_min']} | k_outer={results[0]['k_outer']}",
         "",
-        _plain_row(["Modelo", "F1 macro", "BalAcc", "Recall", "Precision", "Estab", "ICN", "Estado"], header=True),
+        _plain_row(["Modelo", "F1 macro", "BalAcc", "Recall", "Precision", "Estab", "ICN", "DeltaS", "Estado"], header=True),
         "-" * (sum(PLAIN_TABLE_WIDTHS) + len(PLAIN_TABLE_WIDTHS) - 1),
         "",
     ]
@@ -213,10 +215,11 @@ def _plain_table_block(target: str, results: list[dict[str, Any]]) -> list[str]:
                 _format_float(item["precision_macro_mean"]),
                 _format_float(item["stability"]),
                 _format_float(item["icn"]),
+                _format_float(item.get("delta_sesgo")),
                 item["best_params_mode"],
             ]
         else:
-            values = [item["model_name"], *["No implementado"] * 6, "No implementado"]
+            values = [item["model_name"], *["No implementado"] * 7, "No implementado"]
         lines.append(_plain_row(values))
         if item["implemented"]:
             for wrapped in textwrap.wrap(f"Hiperparametros mas frecuentes: {item['best_params_mode']}", width=120):
