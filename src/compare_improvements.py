@@ -1,0 +1,127 @@
+"""Compara resultados con/sin feature engineering y con/sin agrupacion de clases raras.
+
+Genera una tabla comparativa para cada target con ambos enfoques.
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from data_loader import (
+    FEATURE_COLS,
+    TARGETS,
+    group_rare_gds_classes,
+    load_sav_dataset,
+    prepare_xy,
+)
+from evaluation import assign_icn, compute_delta_sesgo, compute_outer_folds, run_nested_cv, unimplemented_result
+from models import build_model_registry
+
+
+CONFIG = {
+    "max_outer_folds": 5,
+    "max_inner_folds": 3,
+    "outer_random_state": 42,
+    "inner_random_state": 123,
+    "n_jobs": -1,
+}
+
+MODEL_ORDER = ["logistic", "svm_linear", "svm_rbf", "tree", "knn"]
+
+
+def run_all(df: pd.DataFrame, use_interactions: bool, group_gds: bool, label: str) -> dict:
+    df_work = group_rare_gds_classes(df, threshold=50) if group_gds else df.copy()
+    registry = build_model_registry(random_state=42)
+    results = {}
+
+    for target in TARGETS:
+        if group_gds and target != "GDS":
+            continue
+
+        X, y = prepare_xy(df_work, target, use_interactions=use_interactions)
+        n_min, k_outer = compute_outer_folds(y, CONFIG["max_outer_folds"])
+        distribution = {int(k): int(v) for k, v in y.value_counts().sort_index().items()}
+        target_results = []
+
+        for model_key in MODEL_ORDER:
+            spec = registry[model_key]
+            if spec.implemented:
+                result = run_nested_cv(X, y, target, spec, CONFIG)
+            else:
+                result = unimplemented_result(target, spec, distribution, n_min, k_outer)
+            target_results.append(result)
+
+        assign_icn(target_results)
+        compute_delta_sesgo(target_results)
+        results[target] = target_results
+        print(f"  {label} | {target} | n_min={n_min} | F1_max={max(r['f1_macro_mean'] or 0 for r in target_results):.4f}")
+
+    return results
+
+
+def main() -> None:
+    df = load_sav_dataset("datasets/15 atributos R0-R5.sav")
+
+    print("\n[BASELINE] Sin mejoras, todos los targets")
+    base = run_all(df, use_interactions=False, group_gds=False, label="BASE")
+
+    print("\n[FE] Con interacciones, todos los targets")
+    with_fe = run_all(df, use_interactions=True, group_gds=False, label="FE")
+
+    print("\n[GROUP] GDS con clases agrupadas (5,6,7 -> 'severo')")
+    grouped = run_all(df, use_interactions=False, group_gds=True, label="GROUP")
+
+    print("\n[FE+GROUP] GDS con FE + clases agrupadas")
+    both = run_all(df, use_interactions=True, group_gds=True, label="FE+GROUP")
+
+    out_dir = Path("outputs/comparisons")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    rows = []
+    for target in TARGETS:
+        for label, results in [("BASE", base), ("FE", with_fe), ("GROUP", grouped), ("FE+GROUP", both)]:
+            if target not in results:
+                continue
+            for r in results[target]:
+                rows.append({
+                    "experimento": label,
+                    "target": target,
+                    "modelo": r["model_name"],
+                    "n_min": r["n_min"],
+                    "k_outer": r["k_outer"],
+                    "n_features": None,
+                    "f1_macro_mean": r.get("f1_macro_mean"),
+                    "balanced_accuracy_mean": r.get("balanced_accuracy_mean"),
+                    "recall_macro_mean": r.get("recall_macro_mean"),
+                    "precision_macro_mean": r.get("precision_macro_mean"),
+                    "icn": r.get("icn"),
+                    "delta_sesgo": r.get("delta_sesgo"),
+                })
+                if r.get("confusion_matrix") is not None:
+                    pass
+
+    df_compare = pd.DataFrame(rows)
+    df_compare.to_csv(out_dir / "comparison_baseline_vs_improvements.csv", index=False, encoding="utf-8")
+    print(f"\nComparación guardada en {out_dir / 'comparison_baseline_vs_improvements.csv'}")
+
+    print("\n=== RESUMEN: MEJOR F1 POR TARGET Y EXPERIMENTO ===")
+    for target in TARGETS:
+        print(f"\n{target}:")
+        sub = df_compare[df_compare["target"] == target]
+        for exp in ["BASE", "FE", "GROUP", "FE+GROUP"]:
+            sub_exp = sub[sub["experimento"] == exp]
+            if sub_exp.empty:
+                continue
+            best = sub_exp.loc[sub_exp["f1_macro_mean"].idxmax()]
+            print(f"  {exp:8s} | mejor: {best['modelo']:25s} | F1={best['f1_macro_mean']:.4f} | ICN={best['icn']:.3f}")
+
+    for name, results in [("BASE", base), ("FE", with_fe), ("GROUP", grouped), ("FE+GROUP", both)]:
+        with open(out_dir / f"results_{name.lower().replace('+', '_')}.json", "w") as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
+
+
+if __name__ == "__main__":
+    main()
