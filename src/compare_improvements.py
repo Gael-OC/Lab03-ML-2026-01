@@ -87,7 +87,6 @@ def main() -> None:
 
     out_dir = comparisons_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_dir.mkdir(parents=True, exist_ok=True)
 
     rows = []
     for target in TARGETS:

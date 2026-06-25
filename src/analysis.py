@@ -553,9 +553,6 @@ def analyze_bootstrap_ci(
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols * 5.5, n_rows * 4.5))
     axes = axes.flatten()
     palette = sns.color_palette("colorblind", len(MODEL_ORDER))
-    # Importante: usar los display_name de MODEL_DISPLAY_NAMES para que el
-    # match con row["modelo"] sea exacto. Antes tenia tildes distintas
-    # y nunca matcheaba, por lo que todos los puntos caian en palette[0].
     color_map = {MODEL_DISPLAY_NAMES[key]: palette[i] for i, key in enumerate(MODEL_ORDER)}
 
     for idx, target in enumerate(TARGETS):

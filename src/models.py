@@ -74,7 +74,7 @@ def build_model_registry(random_state: int = 42) -> dict[str, ModelSpec]:
     return {
         "dummy": ModelSpec(
             key="dummy",
-            display_name="Baseline (DummyClassifier)",
+            display_name="Baseline (Dummy)",
             implemented=True,
             pipeline=Pipeline([
                 ("clf", DummyClassifier(strategy="stratified", random_state=random_state)),
@@ -86,10 +86,6 @@ def build_model_registry(random_state: int = 42) -> dict[str, ModelSpec]:
             key="svm_linear",
             display_name="SVM lineal",
             implemented=True,
-            # SVC ignora random_state salvo cuando probability=True
-            # (que no usamos). No se pasa para no sugerir una
-            # determinismo que no existe; la semilla efectiva
-            # viene del StratifiedKFold externo (random_state=42).
             pipeline=Pipeline([
                 ("scaler", StandardScaler()),
                 ("clf", SVC(kernel="linear", class_weight="balanced")),
@@ -100,7 +96,6 @@ def build_model_registry(random_state: int = 42) -> dict[str, ModelSpec]:
             key="svm_rbf",
             display_name="SVM RBF",
             implemented=True,
-            # Misma justificacion que SVM lineal arriba.
             pipeline=Pipeline([
                 ("scaler", StandardScaler()),
                 ("clf", SVC(kernel="rbf", class_weight="balanced")),
