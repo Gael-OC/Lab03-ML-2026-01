@@ -18,14 +18,16 @@ SUMMARY_COLUMNS = [
     "balanced_accuracy_mean",
     "recall_macro_mean",
     "precision_macro_mean",
+    "stability_raw",
     "stability",
+    "icn_raw",
     "icn",
     "delta_sesgo",
     "best_params_mode",
     "message",
 ]
 
-PLAIN_TABLE_WIDTHS = [21, 14, 14, 14, 14, 12, 12, 12, 25]
+PLAIN_TABLE_WIDTHS = [21, 14, 14, 14, 14, 8, 8, 8, 8, 25]
 
 
 def write_summary_csv(results_by_target: dict[str, list[dict[str, Any]]], output_path: Path) -> None:
@@ -101,9 +103,9 @@ def write_latex_tables(results_by_target: dict[str, list[dict[str, Any]]], outpu
                 r"\centering",
                 rf"\caption{{Resultados para {latex_escape(target)}}}",
                 r"\scriptsize",
-                r"\begin{tabular}{p{2.5cm}p{1.8cm}p{1.5cm}p{1.5cm}p{1.7cm}p{1.4cm}p{1.3cm}p{1.3cm}p{3.0cm}}",
+                r"\begin{tabular}{p{2.5cm}p{1.8cm}p{1.4cm}p{1.3cm}p{1.4cm}p{1.0cm}p{1.0cm}p{1.0cm}p{1.0cm}p{2.5cm}}",
                 r"\toprule",
-                r"Modelo & F1 macro & BalAcc & Recall & Precision & Estab. & ICN & $\Delta$sesgo & Hiperparámetros / estado \\",
+                r"Modelo & F1 macro & BalAcc & Recall & Precision & Estab* & ICN* & ICN & $\Delta$sesgo & Hiperparámetros / estado \\",
                 r"\midrule",
             ]
         )
@@ -188,7 +190,8 @@ def _latex_row(item: dict[str, Any]) -> str:
         f"{_format_float(item['balanced_accuracy_mean'])} & "
         f"{_format_float(item['recall_macro_mean'])} & "
         f"{_format_float(item['precision_macro_mean'])} & "
-        f"{_format_float(item['stability'])} & "
+        f"{_format_float(item['stability_raw'])} & "
+        f"{_format_float(item['icn_raw'])} & "
         f"{_format_float(item['icn'])} & "
         f"{_format_float(item.get('delta_sesgo'))} & "
         f"{latex_escape(item['best_params_mode'])} \\\\"
@@ -201,7 +204,10 @@ def _plain_table_block(target: str, results: list[dict[str, Any]]) -> list[str]:
         f"Experimento {target}",
         f"Distribucion: {distribution} | n_min={results[0]['n_min']} | k_outer={results[0]['k_outer']}",
         "",
-        _plain_row(["Modelo", "F1 macro", "BalAcc", "Recall", "Precision", "Estab", "ICN", "DeltaS", "Estado"], header=True),
+        _plain_row(
+            ["Modelo", "F1 macro", "BalAcc", "Recall", "Precision", "Estab*", "ICN*", "ICN", "DeltaS", "Estado"],
+            header=True,
+        ),
         "-" * (sum(PLAIN_TABLE_WIDTHS) + len(PLAIN_TABLE_WIDTHS) - 1),
         "",
     ]
@@ -213,7 +219,8 @@ def _plain_table_block(target: str, results: list[dict[str, Any]]) -> list[str]:
                 _format_float(item["balanced_accuracy_mean"]),
                 _format_float(item["recall_macro_mean"]),
                 _format_float(item["precision_macro_mean"]),
-                _format_float(item["stability"]),
+                _format_float(item["stability_raw"]),
+                _format_float(item["icn_raw"]),
                 _format_float(item["icn"]),
                 _format_float(item.get("delta_sesgo")),
                 item["best_params_mode"],

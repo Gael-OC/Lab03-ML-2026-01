@@ -68,7 +68,9 @@ def unimplemented_result(
         "f1_macro_mean": None,
         "f1_macro_std": None,
         "stability": None,
+        "stability_raw": None,
         "icn": None,
+        "icn_raw": None,
         "best_params_mode": "No implementado",
         "best_params_counts": {},
         "warnings": [],
@@ -209,8 +211,10 @@ def run_nested_cv(
     result["fold_delta_sesgo"] = [i - e for i, e in zip(fold_best_scores, fold_f1_external)]
     result["delta_sesgo"] = float(np.mean(result["fold_delta_sesgo"]))
 
-    result["stability"] = float(max(0.0, min(1.0, 1.0 - result["f1_macro_std"])))
+    result["stability_raw"] = float(max(0.0, min(1.0, 1.0 - result["f1_macro_std"])))
     result["icn"] = None
+    result["icn_raw"] = None
+    result["stability"] = result["stability_raw"]
     if return_estimators:
         if estimator_cache_dir is not None:
             from significance import save_estimators
@@ -227,21 +231,61 @@ def run_nested_cv(
     return result
 
 
+ICN_WEIGHTS = {
+    "f1_macro": 0.40,
+    "balanced_accuracy": 0.25,
+    "recall_macro": 0.20,
+    "precision_macro": 0.10,
+    "stability": 0.05,
+}
+
+
+def _compute_icn_raw(item: dict[str, Any]) -> float:
+    """ICN sin normalizar (fórmula del PDF del laboratorio).
+
+    Los pesos del PDF son: 0.40 F1 + 0.25 BA + 0.20 Recall + 0.10 Precision
+    + 0.05 Estabilidad. stability es 1 - std(F1 macro entre folds),
+    recortado a [0, 1].
+
+    El valor resultante esta en el mismo rango que las metricas originales
+    (~[0, 1] en la practica), lo que permite comparar entre targets.
+    """
+    return float(
+        ICN_WEIGHTS["f1_macro"] * item["f1_macro_mean"]
+        + ICN_WEIGHTS["balanced_accuracy"] * item["balanced_accuracy_mean"]
+        + ICN_WEIGHTS["recall_macro"] * item["recall_macro_mean"]
+        + ICN_WEIGHTS["precision_macro"] * item["precision_macro_mean"]
+        + ICN_WEIGHTS["stability"] * item["stability_raw"]
+    )
+
+
 def assign_icn(results: list[dict[str, Any]]) -> None:
+    """Asigna dos ICN a cada modelo:
+
+    - ``icn_raw``: formula cruda del PDF (sin normalizar). Comparable entre
+      targets, pero dominado por la magnitud absoluta de F1 y BA en targets
+      faciles.
+    - ``icn``: cada componente normalizada min-max entre los modelos del
+      mismo target, luego ponderada. Adecuado para ordenar modelos dentro
+      de un mismo target, pero no comparable entre targets.
+    - ``stability`` y ``stability_raw``: ``stability`` es la version
+      normalizada (utilizada por ``icn``); ``stability_raw`` es 1 - std(F1)
+      recortado a [0, 1].
+    """
     implemented = [item for item in results if item["implemented"]]
     if not implemented:
         return
 
+    for item in implemented:
+        item["icn_raw"] = _compute_icn_raw(item)
+
     if len(implemented) == 1:
         item = implemented[0]
-        item["icn"] = float(
-            0.40 * item["f1_macro_mean"]
-            + 0.25 * item["balanced_accuracy_mean"]
-            + 0.20 * item["recall_macro_mean"]
-            + 0.10 * item["precision_macro_mean"]
-            + 0.05 * item["stability"]
+        item["icn"] = item["icn_raw"]
+        item["icn_note"] = (
+            "ICN directo porque solo hay un modelo implementado; coincide "
+            "con icn_raw por falta de base de normalizacion."
         )
-        item["icn_note"] = "ICN directo porque solo hay un modelo implementado."
         return
 
     metric_keys = [
@@ -274,7 +318,10 @@ def assign_icn(results: list[dict[str, Any]]) -> None:
             + 0.10 * normalized["precision_macro_mean"][key]
             + 0.05 * normalized["f1_macro_std"][key]
         )
-        item["icn_note"] = "ICN normalizado min-max entre modelos implementados."
+        item["icn_note"] = (
+            "ICN normalizado min-max entre modelos del mismo target; util "
+            "para ordenar modelos dentro del target, no entre targets."
+        )
 
 
 def _build_inner_cv(

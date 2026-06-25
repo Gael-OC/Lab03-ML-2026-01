@@ -63,6 +63,12 @@ def _extract_metric_matrix(
 
 
 def _best_model_per_target(results_by_target: dict) -> dict[str, dict]:
+    """Elige el mejor modelo por target segun el ICN normalizado.
+
+    ICN normalizado es la metrica correcta para ordenar modelos dentro de
+    un mismo target (mismo rango de dificultad). El ICN crudo se prefiere
+    cuando se quieren comparar targets entre si.
+    """
     best: dict[str, dict] = {}
     for target, results in results_by_target.items():
         implemented = [r for r in results if r["implemented"] and r.get("icn") is not None]
@@ -174,15 +180,16 @@ def plot_confusion_matrices(results_by_target: dict[str, list[dict]], output_dir
 # Comparación ICN
 
 def plot_icn_comparison(results_by_target: dict[str, list[dict]], output_dir: Path) -> None:
+    """Grafica el ICN crudo (formula del PDF, comparable entre targets)."""
     data: list[dict[str, Any]] = []
     for target, results in results_by_target.items():
         for item in results:
-            if not item["implemented"] or item.get("icn") is None:
+            if not item["implemented"] or item.get("icn_raw") is None:
                 continue
             data.append({
                 "target": target,
                 "modelo": item["model_name"],
-                "ICN": item["icn"],
+                "ICN": item["icn_raw"],
             })
 
     df = pd.DataFrame(data)
@@ -191,7 +198,7 @@ def plot_icn_comparison(results_by_target: dict[str, list[dict]], output_dir: Pa
     fig, ax = plt.subplots(figsize=(10, 5))
     sns.barplot(data=df, x="target", y="ICN", hue="modelo", ax=ax, palette="colorblind")
     ax.axhline(y=mean_icn, color="gray", linestyle="--", linewidth=1, label=f"Promedio: {mean_icn:.3f}")
-    ax.set_title("Índice Comparativo Normalizado (ICN) por modelo y objetivo", fontweight="bold", fontsize=13)
+    ax.set_title("ICN (formula cruda del PDF) por modelo y objetivo", fontweight="bold", fontsize=13)
     ax.set_xlabel("Objetivo")
     ax.legend(fontsize=8, loc="upper right")
     fig.tight_layout()
@@ -202,13 +209,20 @@ def plot_icn_comparison(results_by_target: dict[str, list[dict]], output_dir: Pa
 # Heatmap de métricas por target
 
 def plot_metrics_heatmap(results_by_target: dict[str, list[dict]], output_dir: Path) -> None:
+    """Heatmap por target con métricas crudas (comparables entre targets).
+
+    Se usan ``stability_raw`` (1 - std(F1) sin normalizar) e ``icn_raw``
+    (formula del PDF sin normalizar) para que el heatmap sea comparable
+    entre targets. ``icn`` normalizado solo es comparable dentro de un
+    mismo target.
+    """
     metric_keys = [
         ("f1_macro_mean", "F1"),
         ("balanced_accuracy_mean", "BA"),
         ("recall_macro_mean", "Recall"),
         ("precision_macro_mean", "Precision"),
-        ("stability", "Estab."),
-        ("icn", "ICN"),
+        ("stability_raw", "Estab."),
+        ("icn_raw", "ICN"),
     ]
 
     for target, results in results_by_target.items():
@@ -368,7 +382,12 @@ def plot_svm_kernel_comparison(results_by_target: dict[str, list[dict]], output_
 # Dashboard resumen
 
 def plot_summary_dashboard(results_by_target: dict[str, list[dict]], output_dir: Path) -> None:
-    metrics = ["f1_macro_mean", "balanced_accuracy_mean", "recall_macro_mean", "precision_macro_mean", "stability"]
+    """Radar por target con métricas crudas, comparables entre targets.
+
+    Usa ``stability_raw`` en lugar de ``stability`` (normalizado) para que
+    el dashboard sea comparable entre los 6 targets.
+    """
+    metrics = ["f1_macro_mean", "balanced_accuracy_mean", "recall_macro_mean", "precision_macro_mean", "stability_raw"]
     metric_labels = ["F1 macro", "BalAcc", "Recall", "Precision", "Estabilidad"]
     n_metrics = len(metrics)
     angles = np.linspace(0, 2 * np.pi, n_metrics, endpoint=False).tolist()
