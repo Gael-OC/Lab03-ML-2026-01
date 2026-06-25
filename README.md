@@ -446,7 +446,7 @@ Compara las distribuciones de F1 macro fold a fold. Con solo k_outer ∈ {2, 5} 
 |---|---:|
 | Todos | 0 |
 
-Ninguna comparación dio p<0.05 con Wilcoxon. Esto es esperable: con k=5 folds pareados, Wilcoxon detecta solo diferencias grandes (>0.10 en F1). Se incluye en el reporte por transparencia, no como criterio de decisión.
+Ninguna comparación dio p<0.05 con Wilcoxon. Esto es esperable: con k=5 folds pareados, Wilcoxon detecta solo diferencias grandes (>0.10 en F1). En `GDS` (k=2), la implementación además retorna p=1.0 cuando las diferencias son ~0 entre folds, lo cual es correcto pero refuerza que Wilcoxon no es informativo con tan pocos folds. Se incluye en el reporte por transparencia, no como criterio de decisión.
 
 ### McNemar con corrección de continuidad de Yates
 
