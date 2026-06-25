@@ -48,10 +48,16 @@ def main() -> None:
     df = load_sav_dataset(config["dataset"]["path"])
 
     output_dirs = {name: Path(path) for name, path in config["outputs"].items()}
+    figures_dir = output_dirs["figures"]
+    tables_dir = output_dirs["tables"]
+
+    # Subdirectorios de figuras
+    eda_dir = figures_dir / "eda"
+    analysis_dir = figures_dir / "analysis"
+    plots_dir = figures_dir / "experiments"
 
     # EDA
     if not args.skip_eda:
-        eda_dir = output_dirs.get("figures") / "eda" if "figures" in output_dirs else output_dirs["tables"] / ".." / "figures" / "eda"
         eda_dir.mkdir(parents=True, exist_ok=True)
         run_eda(df, eda_dir)
 
@@ -89,8 +95,6 @@ def main() -> None:
         compute_delta_sesgo(target_results)
         results_by_target[target_name] = target_results
 
-    tables_dir = output_dirs["tables"]
-
     write_summary_csv(results_by_target, tables_dir / "resumen_resultados.csv")
     write_json_results(results_by_target, tables_dir / "resultados_detallados.json")
     write_auxiliary_tables(results_by_target, output_dirs)
@@ -98,19 +102,17 @@ def main() -> None:
     write_latex_tables(results_by_target, tables_dir / "resultados_experimentos.tex")
 
     # El PDF se genera despues de los plots para poder incrustar figuras.
-    figures_dir_for_pdf = output_dirs.get("figures") / "experiments" if "figures" in output_dirs else None
     if not args.skip_plots:
         write_pdf_tables(
             results_by_target,
             tables_dir / "resultados_experimentos.pdf",
-            figures_dir=figures_dir_for_pdf,
+            figures_dir=plots_dir,
         )
     else:
         write_pdf_tables(results_by_target, tables_dir / "resultados_experimentos.pdf")
 
     # Analisis avanzado
     if not args.skip_analysis:
-        analysis_dir = output_dirs.get("figures") / "analysis" if "figures" in output_dirs else output_dirs["tables"] / ".." / "figures" / "analysis"
         analysis_dir.mkdir(parents=True, exist_ok=True)
         run_advanced_analysis(
             results_by_target, df, output_dirs,
@@ -119,7 +121,6 @@ def main() -> None:
 
     # Visualizaciones
     if not args.skip_plots:
-        plots_dir = output_dirs.get("figures") / "experiments" if "figures" in output_dirs else output_dirs["tables"] / ".." / "figures" / "experiments"
         plots_dir.mkdir(parents=True, exist_ok=True)
         generate_all_plots(results_by_target, plots_dir)
 
