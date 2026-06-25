@@ -40,7 +40,7 @@ def run_advanced_analysis(
     analyze_learning_curves(df, figures_dir)
 
     print("[analysis] feature importance...")
-    analyze_feature_importance(df, figures_dir)
+    analyze_feature_importance(df, figures_dir, estimator_cache_dir=estimator_cache_dir)
 
     print("[analysis] hyperparameter stability...")
     analyze_hyperparameter_stability(results_by_target, figures_dir)
@@ -130,36 +130,71 @@ def analyze_learning_curves(df: pd.DataFrame, output_dir: Path) -> None:
 
 # Importancia de atributos
 
-def analyze_feature_importance(df: pd.DataFrame, output_dir: Path) -> None:
+def _extract_importance(estimator, model_key: str) -> np.ndarray:
+    """Extrae la importancia de un estimador ya entrenado.
+
+    Para modelos lineales (LR, SVM lineal) se usa el valor absoluto de
+    los coeficientes promediado sobre las clases. Para Arbol se usa
+    ``feature_importances_`` de sklearn.
+    """
+    clf = estimator.named_steps["clf"]
+    if model_key == "tree":
+        return clf.feature_importances_
+    if clf.coef_.ndim > 1:
+        return np.abs(clf.coef_).mean(axis=0)
+    return np.abs(clf.coef_).flatten()
+
+
+def analyze_feature_importance(
+    df: pd.DataFrame,
+    output_dir: Path,
+    estimator_cache_dir: Path | None = None,
+) -> None:
+    """Heatmap de importancia por feature y por modelo.
+
+    Si hay cache de estimadores (modo ``--keep-estimators``), la
+    importancia de cada feature se promedia sobre los ``best_estimator_``
+    de los folds externos, lo que da una estimacion mas estable que
+    ajustar un solo modelo sobre todo el dataset. Si no hay cache, se
+    cae al ajuste global como fallback (mas rapido pero menos estable).
+    """
     registry = build_model_registry(random_state=42)
     importance_models = [
-        ("logistic", "Regresión Logística"),
+        ("logistic", "Regresion Logistica"),
         ("svm_linear", "SVM lineal"),
-        ("tree", "Árbol de decisión"),
+        ("tree", "Arbol de decision"),
     ]
 
-    for target in TARGETS:
-        X = df[FEATURE_COLS].astype(float)
-        y = df[target].astype(int)
+    from significance import load_estimators
 
+    for target in TARGETS:
         importance_data: dict[str, np.ndarray] = {}
 
         for model_key, display_name in importance_models:
-            spec = registry[model_key]
-            try:
-                model = clone(spec.pipeline)
-                model.fit(X, y)
-                clf = model.named_steps["clf"]
+            per_fold_imps: list[np.ndarray] = []
+            if estimator_cache_dir is not None:
+                payload = load_estimators(estimator_cache_dir, target, model_key)
+                if payload is not None:
+                    for est in payload["estimators"]:
+                        try:
+                            per_fold_imps.append(_extract_importance(est, model_key))
+                        except Exception:
+                            continue
 
-                if model_key == "tree":
-                    imp = clf.feature_importances_
-                else:
-                    imp = np.abs(clf.coef_).mean(axis=0) if clf.coef_.ndim > 1 else np.abs(clf.coef_)
+            if per_fold_imps:
+                imp = np.mean(per_fold_imps, axis=0)
+            else:
+                # Fallback: ajustar un modelo global.
+                spec = registry[model_key]
+                try:
+                    model = clone(spec.pipeline)
+                    model.fit(df[FEATURE_COLS].astype(float), df[target].astype(int))
+                    imp = _extract_importance(model, model_key)
+                except Exception:
+                    imp = np.zeros(len(FEATURE_COLS))
 
-                imp = imp / (imp.sum() + 1e-12)
-                importance_data[display_name] = imp
-            except Exception:
-                importance_data[display_name] = np.zeros(len(FEATURE_COLS))
+            imp = imp / (imp.sum() + 1e-12)
+            importance_data[display_name] = imp
 
         imp_df = pd.DataFrame(importance_data, index=FEATURE_COLS)
 
@@ -178,7 +213,7 @@ def analyze_feature_importance(df: pd.DataFrame, output_dir: Path) -> None:
             cbar_kws={"shrink": 0.6, "label": "Importancia normalizada"},
             ax=ax,
         )
-        ax.set_title(f"Importancia de atributos — {target}", fontweight="bold", fontsize=13)
+        ax.set_title(f"Importancia de atributos (promedio sobre folds) - {target}", fontweight="bold", fontsize=13)
         ax.set_ylabel("Atributo")
         fig.savefig(output_dir / f"feature_importance_{target}.png", dpi=300, bbox_inches="tight")
         plt.close(fig)
