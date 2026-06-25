@@ -18,7 +18,7 @@ from data_loader import (
     prepare_xy,
 )
 from evaluation import assign_icn, compute_delta_sesgo, compute_outer_folds, run_nested_cv, unimplemented_result
-from models import build_model_registry
+from models import MODEL_ORDER, build_model_registry
 
 
 CONFIG = {
@@ -28,8 +28,6 @@ CONFIG = {
     "inner_random_state": 123,
     "n_jobs": -1,
 }
-
-MODEL_ORDER = ["logistic", "svm_linear", "svm_rbf", "tree", "knn"]
 
 
 def run_all(df: pd.DataFrame, use_interactions: bool, group_gds: bool, label: str) -> dict:

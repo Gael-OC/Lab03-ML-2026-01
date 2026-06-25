@@ -7,7 +7,7 @@ from analysis import run_advanced_analysis
 from data_loader import TARGETS, load_sav_dataset, prepare_xy
 from eda import run_eda
 from evaluation import assign_icn, compute_delta_sesgo, compute_outer_folds, run_nested_cv, unimplemented_result
-from models import build_model_registry
+from models import MODEL_ORDER, build_model_registry
 from plots import generate_all_plots
 from reports import (
     write_auxiliary_tables,
@@ -18,8 +18,6 @@ from reports import (
     write_warnings,
 )
 from settings import DEFAULT_CONFIG_PATH, ensure_output_dirs, load_config
-
-MODEL_ORDER = ["logistic", "svm_linear", "svm_rbf", "tree", "knn"]
 
 
 def parse_args() -> ArgumentParser:

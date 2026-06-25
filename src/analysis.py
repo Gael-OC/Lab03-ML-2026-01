@@ -12,12 +12,12 @@ from sklearn.model_selection import KFold, StratifiedKFold, learning_curve
 from sklearn.tree import plot_tree
 
 from data_loader import FEATURE_COLS, TARGETS
-from models import build_model_registry
+from models import MODEL_ORDER, build_model_registry
 from significance import run_significance_tests
 
 sns.set_theme(style="whitegrid", palette="colorblind", font_scale=1.0)
-MODEL_ORDER = ["logistic", "svm_linear", "svm_rbf", "tree", "knn"]
 MODEL_DISPLAY_NAMES = {
+    "dummy": "Baseline (Dummy)",
     "logistic": "Regresion Logistica",
     "svm_linear": "SVM lineal",
     "svm_rbf": "SVM RBF",

@@ -9,9 +9,9 @@ import pandas as pd
 import seaborn as sns
 
 from data_loader import TARGETS
+from models import MODEL_DISPLAY_NAMES
 
 sns.set_theme(style="whitegrid", palette="colorblind", font_scale=1.1)
-MODEL_DISPLAY_NAMES = ["Regresión Logística", "SVM lineal", "SVM RBF", "Árbol de decisión", "K-NN"]
 
 
 def generate_all_plots(results_by_target: dict[str, list[dict[str, Any]]], output_dir: Path) -> None:
@@ -59,7 +59,7 @@ def _extract_metric_matrix(
         for item in results:
             values.append(item.get(metric))
         data[target] = values
-    return pd.DataFrame(data, index=MODEL_DISPLAY_NAMES)
+    return pd.DataFrame(data, index=list(MODEL_DISPLAY_NAMES.keys()))
 
 
 def _best_model_per_target(results_by_target: dict) -> dict[str, dict]:
@@ -235,7 +235,7 @@ def plot_metrics_heatmap(results_by_target: dict[str, list[dict]], output_dir: P
         if not data:
             continue
 
-        matrix = pd.DataFrame(data, index=MODEL_DISPLAY_NAMES).astype(float)
+        matrix = pd.DataFrame(data, index=list(MODEL_DISPLAY_NAMES.keys())).astype(float)
 
         fig, ax = plt.subplots(figsize=(len(metric_keys) * 1.2 + 1, len(matrix.index) * 0.8 + 1))
         sns.heatmap(
