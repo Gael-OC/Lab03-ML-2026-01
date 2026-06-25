@@ -19,6 +19,8 @@ from reports import (
 )
 from settings import DEFAULT_CONFIG_PATH, ensure_output_dirs, load_config
 
+MODEL_ORDER = ["logistic", "svm_linear", "svm_rbf", "tree", "knn"]
+
 
 def parse_args() -> ArgumentParser:
     parser = ArgumentParser(description="Ejecuta el Laboratorio 03 con validacion cruzada anidada.")
@@ -32,6 +34,11 @@ def parse_args() -> ArgumentParser:
     parser.add_argument("--skip-eda", action="store_true", help="Salta el analisis exploratorio.")
     parser.add_argument("--skip-analysis", action="store_true", help="Salta el analisis avanzado.")
     parser.add_argument("--skip-plots", action="store_true", help="Salta las visualizaciones.")
+    parser.add_argument(
+        "--keep-estimators",
+        action="store_true",
+        help="Guarda los estimadores de cada fold externo para tests de significancia sin reentrenar.",
+    )
     return parser.parse_args()
 
 
@@ -53,9 +60,13 @@ def main() -> None:
     # Experimentos
     target_names = args.targets or config["experiment"].get("targets", TARGETS)
     model_registry = build_model_registry(random_state=config["experiment"]["outer_random_state"])
-    model_order = ["logistic", "svm_linear", "svm_rbf", "tree", "knn"]
 
     results_by_target = {}
+
+    estimator_cache_dir = (
+        output_dirs.get("root", Path("outputs")) / "estimator_cache"
+        if args.keep_estimators else None
+    )
 
     for target_name in target_names:
         X, y = prepare_xy(df, target_name)
@@ -63,10 +74,15 @@ def main() -> None:
         distribution = {int(label): int(count) for label, count in y.value_counts().sort_index().items()}
         target_results = []
 
-        for model_key in model_order:
+        for model_key in MODEL_ORDER:
             spec = model_registry[model_key]
             if spec.implemented:
-                result = run_nested_cv(X, y, target_name, spec, config["experiment"])
+                output = run_nested_cv(
+                    X, y, target_name, spec, config["experiment"],
+                    return_estimators=args.keep_estimators,
+                    estimator_cache_dir=estimator_cache_dir,
+                )
+                result = output[0] if isinstance(output, tuple) else output
             else:
                 result = unimplemented_result(target_name, spec, distribution, n_min, k_outer)
             target_results.append(result)
@@ -88,7 +104,10 @@ def main() -> None:
     if not args.skip_analysis:
         analysis_dir = output_dirs.get("figures") / "analysis" if "figures" in output_dirs else output_dirs["tables"] / ".." / "figures" / "analysis"
         analysis_dir.mkdir(parents=True, exist_ok=True)
-        run_advanced_analysis(results_by_target, df, output_dirs)
+        run_advanced_analysis(
+            results_by_target, df, output_dirs,
+            estimator_cache_dir=estimator_cache_dir,
+        )
 
     # Visualizaciones
     if not args.skip_plots:

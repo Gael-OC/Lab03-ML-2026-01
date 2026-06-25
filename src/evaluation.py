@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from pathlib import Path
 from typing import Any
 import warnings
 
@@ -91,6 +92,7 @@ def run_nested_cv(
     model_spec: ModelSpec,
     config: dict[str, Any],
     return_estimators: bool = False,
+    estimator_cache_dir: Path | None = None,
 ) -> dict[str, Any] | tuple[dict[str, Any], list]:
     distribution = class_distribution(y)
     n_min, k_outer = compute_outer_folds(y, config["max_outer_folds"])
@@ -116,6 +118,7 @@ def run_nested_cv(
     result_warnings: list[str] = []
     fold_best_scores: list[float] = []
     fold_best_estimators: list = [] if return_estimators else None
+    fold_test_indices: list[list[int]] = [] if return_estimators else None
 
     for fold_idx, (train_idx, test_idx) in enumerate(outer_cv.split(X, y), start=1):
         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
@@ -152,6 +155,7 @@ def run_nested_cv(
         fold_best_scores.append(search.best_score_)
         if return_estimators and fold_best_estimators is not None:
             fold_best_estimators.append(search.best_estimator_)
+            fold_test_indices.append([int(i) for i in test_idx])
 
         y_pred = search.predict(X_test)
         y_test_list = [int(value) for value in y_test.to_list()]
@@ -208,6 +212,17 @@ def run_nested_cv(
     result["stability"] = float(max(0.0, min(1.0, 1.0 - result["f1_macro_std"])))
     result["icn"] = None
     if return_estimators:
+        if estimator_cache_dir is not None:
+            from significance import save_estimators
+            save_estimators(
+                estimator_cache_dir,
+                target=target_name,
+                model_key=model_spec.key,
+                payload={
+                    "estimators": fold_best_estimators,
+                    "test_indices": fold_test_indices,
+                },
+            )
         return result, fold_best_estimators
     return result
 

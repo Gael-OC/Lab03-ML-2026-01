@@ -8,20 +8,29 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from sklearn.base import clone
-from sklearn.model_selection import KFold, learning_curve
+from sklearn.model_selection import KFold, StratifiedKFold, learning_curve
 from sklearn.tree import plot_tree
 
 from data_loader import FEATURE_COLS, TARGETS
 from models import build_model_registry
+from significance import run_significance_tests
 
 sns.set_theme(style="whitegrid", palette="colorblind", font_scale=1.0)
 MODEL_ORDER = ["logistic", "svm_linear", "svm_rbf", "tree", "knn"]
+MODEL_DISPLAY_NAMES = {
+    "logistic": "Regresion Logistica",
+    "svm_linear": "SVM lineal",
+    "svm_rbf": "SVM RBF",
+    "tree": "Arbol de decision",
+    "knn": "K-NN",
+}
 
 
 def run_advanced_analysis(
     results_by_target: dict[str, list[dict[str, Any]]],
     df: pd.DataFrame,
     output_dirs: dict[str, Path],
+    estimator_cache_dir: Path | None = None,
 ) -> None:
     figures_dir = output_dirs.get("analysis", output_dirs["figures"] / "analysis")
     tables_dir = output_dirs["tables"]
@@ -51,8 +60,14 @@ def run_advanced_analysis(
     print("[analysis] bootstrap CI...")
     analyze_bootstrap_ci(results_by_target, tables_dir, figures_dir)
 
-    print("[analysis] statistical tests (Wilcoxon + McNemar)...")
-    analyze_statistical_tests(results_by_target, tables_dir, figures_dir)
+    if estimator_cache_dir is not None:
+        print("[analysis] statistical tests (Wilcoxon + McNemar-Yates)...")
+        analyze_statistical_tests(
+            results_by_target, df, tables_dir, figures_dir, estimator_cache_dir
+        )
+    else:
+        print("[analysis] tests de significancia omitidos (sin cache de estimadores).")
+        print("          Ejecute `python src/main.py --keep-estimators` para habilitarlos.")
 
     print(f"[analysis] completo. Figuras en {figures_dir}")
 
@@ -87,7 +102,7 @@ def analyze_learning_curves(df: pd.DataFrame, output_dir: Path) -> None:
                     clone(spec.pipeline),
                     X, y,
                     train_sizes=np.linspace(0.1, 1.0, 8),
-                    cv=KFold(n_splits=k_cv, shuffle=True, random_state=42),
+                    cv=StratifiedKFold(n_splits=k_cv, shuffle=True, random_state=42),
                     scoring="f1_macro",
                     n_jobs=-1,
                     error_score=0.0,
@@ -528,177 +543,63 @@ def analyze_bootstrap_ci(
     plt.close(fig)
 
 
-# 4.10  Tests de significancia estadistica: Wilcoxon + McNemar
-
-def _reconstruct_fold_predictions(
-    estimators: list, X: pd.DataFrame, test_indices_by_fold: list[list[int]]
-) -> list[np.ndarray]:
-    """Re-genera predicciones por fold externo usando los estimadores entrenados.
-
-    Necesario para McNemar, que requiere comparar predicciones a nivel de ejemplo.
-    """
-    preds_per_fold = []
-    for est, test_idx in zip(estimators, test_indices_by_fold):
-        preds_per_fold.append(est.predict(X.iloc[test_idx]))
-    return preds_per_fold
-
+# 4.10  Tests de significancia estadistica: Wilcoxon + McNemar (Yates)
 
 def analyze_statistical_tests(
     results_by_target: dict[str, list[dict[str, Any]]],
+    df: pd.DataFrame,
     tables_dir: Path,
     figures_dir: Path,
+    estimator_cache_dir: Path,
     alpha: float = 0.05,
 ) -> None:
-    """Wilcoxon firmado sobre F1 por fold + McNemar sobre predicciones por fold.
+    """Wilcoxon firmado sobre F1 por fold + McNemar con correccion de Yates.
+
+    Usa los estimadores persistidos en `estimator_cache_dir` por `run_nested_cv`,
+    por lo que no reentrena la validacion anidada. Esto desacopla el costo del
+    analisis estadistico del costo de los experimentos.
 
     Wilcoxon: test no parametrico pareado, valido con muestras pequenas.
-    McNemar: cuenta discrepancias de clasificacion entre dos modelos en los
-    mismos ejemplos (correcto/incorrecto).
+    McNemar-Yates: discrepacias de acierto/fallo entre dos modelos en los
+    mismos ejemplos, con correccion de continuidad recomendada cuando
+    b + c < 25 (comun con k=5 folds).
     """
-    from scipy.stats import chi2, wilcoxon
+    target_names = [t for t in results_by_target if t in TARGETS]
 
-    from data_loader import FEATURE_COLS
-    from evaluation import run_nested_cv, compute_outer_folds
-    from models import build_model_registry
+    rows_df = run_significance_tests(
+        df=df,
+        results_by_target=results_by_target,
+        cache_dir=estimator_cache_dir,
+        targets=target_names,
+        model_order=MODEL_ORDER,
+        model_display_names=MODEL_DISPLAY_NAMES,
+        alpha=alpha,
+    )
 
-    df = pd.read_csv("datasets/15 atributos R0-R5.sav" + ".sav") if False else None
-
-    registry = build_model_registry(random_state=42)
-    model_order = ["logistic", "svm_linear", "svm_rbf", "tree", "knn"]
-    model_names = {
-        "logistic": "Regresión Logística",
-        "svm_linear": "SVM lineal",
-        "svm_rbf": "SVM RBF",
-        "tree": "Árbol de decisión",
-        "knn": "K-NN",
-    }
-
-    rows: list[dict[str, Any]] = []
-    heatmap_data: dict[str, pd.DataFrame] = {}
-
-    for target in results_by_target:
-        df_target_path = Path(__file__).resolve().parent.parent / "datasets" / "15 atributos R0-R5.sav"
-        import pyreadstat
-        df_full, _ = pyreadstat.read_sav(str(df_target_path))
-        X = df_full[FEATURE_COLS].astype(float)
-        y = df_full[target].astype(int)
-
-        _, k_outer = compute_outer_folds(y, 5)
-
-        from sklearn.model_selection import StratifiedKFold
-        outer_cv = StratifiedKFold(
-            n_splits=k_outer, shuffle=True, random_state=42
-        )
-        test_indices_by_fold = [test_idx for _, test_idx in outer_cv.split(X, y)]
-
-        preds_by_model: dict[str, list[np.ndarray]] = {}
-        f1_by_model: dict[str, list[float]] = {}
-
-        for model_key in model_order:
-            spec = registry[model_key]
-            if not spec.implemented:
-                continue
-            try:
-                _, estimators = run_nested_cv(
-                    X, y, target, spec,
-                    {"max_outer_folds": 5, "max_inner_folds": 3,
-                     "outer_random_state": 42, "inner_random_state": 123,
-                     "n_jobs": -1},
-                    return_estimators=True,
-                )
-                preds_by_model[model_key] = _reconstruct_fold_predictions(
-                    estimators, X, test_indices_by_fold
-                )
-            except Exception:
-                continue
-
-        results = results_by_target[target]
-        for item in results:
-            if item["implemented"] and item.get("fold_metrics"):
-                f1_by_model[item["model_key"]] = [
-                    m["f1_macro"] for m in item["fold_metrics"]
-                ]
-
-        implemented_keys = [k for k in model_order if k in f1_by_model]
-        pvals_wilcoxon = pd.DataFrame(
-            np.nan, index=implemented_keys, columns=implemented_keys
-        )
-        pvals_mcnemar = pd.DataFrame(
-            np.nan, index=implemented_keys, columns=implemented_keys
-        )
-
-        for i, key_a in enumerate(implemented_keys):
-            for j, key_b in enumerate(implemented_keys):
-                if i >= j:
-                    continue
-                f1_a = f1_by_model[key_a]
-                f1_b = f1_by_model[key_b]
-                if len(f1_a) >= 2 and len(f1_b) >= 2:
-                    try:
-                        diffs = np.array(f1_a) - np.array(f1_b)
-                        if np.all(diffs == 0):
-                            p_w = 1.0
-                        else:
-                            _, p_w = wilcoxon(
-                                diffs, zero_method="zsplit", alternative="two-sided"
-                            )
-                    except ValueError:
-                        p_w = 1.0
-                else:
-                    p_w = np.nan
-
-                preds_a = preds_by_model.get(key_a, [])
-                preds_b = preds_by_model.get(key_b, [])
-                if preds_a and preds_b and len(preds_a) == len(preds_b):
-                    y_true_all = []
-                    for test_idx in test_indices_by_fold:
-                        y_true_all.extend(y.iloc[test_idx].tolist())
-                    y_true_all = np.array(y_true_all)
-
-                    preds_a_flat = np.concatenate(preds_a)
-                    preds_b_flat = np.concatenate(preds_b)
-
-                    correct_a = preds_a_flat == y_true_all
-                    correct_b = preds_b_flat == y_true_all
-
-                    b = int(np.sum(correct_a & ~correct_b))
-                    c = int(np.sum(~correct_a & correct_b))
-                    if (b + c) > 0:
-                        stat = (b - c) ** 2 / (b + c)
-                        p_m = float(1.0 - chi2.cdf(stat, df=1))
-                    else:
-                        p_m = 1.0
-                else:
-                    p_m = np.nan
-
-                pvals_wilcoxon.loc[key_a, key_b] = p_w
-                pvals_wilcoxon.loc[key_b, key_a] = p_w
-                pvals_mcnemar.loc[key_a, key_b] = p_m
-                pvals_mcnemar.loc[key_b, key_a] = p_m
-
-                rows.append({
-                    "target": target,
-                    "modelo_A": model_names[key_a],
-                    "modelo_B": model_names[key_b],
-                    "p_wilcoxon": p_w,
-                    "p_mcnemar": p_m,
-                    "significativo_wilcoxon": (
-                        p_w < alpha if not np.isnan(p_w) else False
-                    ),
-                    "significativo_mcnemar": (
-                        p_m < alpha if not np.isnan(p_m) else False
-                    ),
-                    "diferencia_media_f1": float(np.mean(f1_a) - np.mean(f1_b)),
-                })
-
-        heatmap_data[target] = (pvals_wilcoxon, pvals_mcnemar)
-
-    if rows:
-        pd.DataFrame(rows).to_csv(
+    if not rows_df.empty:
+        rows_df.to_csv(
             tables_dir / "significance_tests.csv", index=False, encoding="utf-8"
         )
 
-    _plot_significance_heatmaps(heatmap_data, model_names, figures_dir, alpha)
+    heatmap_data: dict[str, tuple[pd.DataFrame, pd.DataFrame]] = {}
+    for target in target_names:
+        sub = rows_df[rows_df["target"] == target]
+        if sub.empty:
+            continue
+        models = sorted(set(sub["modelo_A"]).union(sub["modelo_B"]))
+        p_w = pd.DataFrame(np.nan, index=models, columns=models)
+        p_m = pd.DataFrame(np.nan, index=models, columns=models)
+        for _, row in sub.iterrows():
+            p_w.loc[row["modelo_A"], row["modelo_B"]] = row["p_wilcoxon"]
+            p_w.loc[row["modelo_B"], row["modelo_A"]] = row["p_wilcoxon"]
+            p_m.loc[row["modelo_A"], row["modelo_B"]] = row["p_mcnemar_yates"]
+            p_m.loc[row["modelo_B"], row["modelo_A"]] = row["p_mcnemar_yates"]
+        for name in models:
+            p_w.loc[name, name] = np.nan
+            p_m.loc[name, name] = np.nan
+        heatmap_data[target] = (p_w, p_m)
+
+    _plot_significance_heatmaps(heatmap_data, MODEL_DISPLAY_NAMES, figures_dir, alpha)
 
 
 def _plot_significance_heatmaps(
@@ -790,11 +691,11 @@ def _plot_significance_heatmaps(
             cmap="RdYlGn_r",
             vmin=0,
             vmax=1,
-            cbar_kws={"shrink": 0.6, "label": f"p-value (McNemar)"},
+            cbar_kws={"shrink": 0.6, "label": f"p-value (McNemar-Yates)"},
             linewidths=0.5,
             ax=ax,
         )
-        ax.set_title(f"{target}\nMcNemar (* = p<{alpha})", fontweight="bold", fontsize=11)
+        ax.set_title(f"{target}\nMcNemar-Yates (* = p<{alpha})", fontweight="bold", fontsize=11)
         ax.tick_params(axis="x", rotation=35, labelsize=7)
         ax.tick_params(axis="y", rotation=0, labelsize=7)
 
@@ -802,7 +703,7 @@ def _plot_significance_heatmaps(
         axes[idx].set_visible(False)
 
     fig.suptitle(
-        "McNemar: p-values por par de modelos y objetivo",
+        "McNemar con correccion de Yates: p-values por par de modelos y objetivo",
         fontsize=15,
         fontweight="bold",
         y=1.02,
