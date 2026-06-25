@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
+from compare_improvements import comparisons_dir
 from data_loader import TARGETS
 
 sns.set_theme(style="whitegrid", palette="colorblind", font_scale=1.0)
@@ -22,7 +23,8 @@ EXP_COLORS = {
 
 
 def main() -> None:
-    df = pd.read_csv("outputs/comparisons/comparison_baseline_vs_improvements.csv")
+    out_dir = comparisons_dir()
+    df = pd.read_csv(out_dir / "comparison_baseline_vs_improvements.csv")
 
     targets_to_plot = []
     for target in TARGETS:
@@ -70,12 +72,12 @@ def main() -> None:
     )
     fig.tight_layout()
 
-    out_dir = Path("outputs/figures/comparisons")
-    out_dir.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_dir / "f1_comparison_baseline_vs_improvements.png",
+    figures_dir = out_dir.parent / "figures" / "comparisons"
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    fig.savefig(figures_dir / "f1_comparison_baseline_vs_improvements.png",
                 dpi=300, bbox_inches="tight")
     plt.close(fig)
-    print(f"Grafico guardado en {out_dir / 'f1_comparison_baseline_vs_improvements.png'}")
+    print(f"Grafico guardado en {figures_dir / 'f1_comparison_baseline_vs_improvements.png'}")
 
     fig, ax = plt.subplots(figsize=(8, 5))
     bar_data = []
@@ -100,9 +102,9 @@ def main() -> None:
     ax.legend(title="Experimento")
     ax.tick_params(axis="x", rotation=0)
     fig.tight_layout()
-    fig.savefig(out_dir / "best_f1_per_target.png", dpi=300, bbox_inches="tight")
+    fig.savefig(figures_dir / "best_f1_per_target.png", dpi=300, bbox_inches="tight")
     plt.close(fig)
-    print(f"Grafico guardado en {out_dir / 'best_f1_per_target.png'}")
+    print(f"Grafico guardado en {figures_dir / 'best_f1_per_target.png'}")
 
 
 if __name__ == "__main__":

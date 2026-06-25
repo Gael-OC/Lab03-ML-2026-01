@@ -18,6 +18,7 @@ from data_loader import (
 )
 from evaluation import assign_icn, compute_delta_sesgo, compute_outer_folds, run_nested_cv, unimplemented_result
 from models import MODEL_ORDER, build_model_registry
+from settings import DEFAULT_CONFIG_PATH, load_config
 
 
 CONFIG = {
@@ -27,6 +28,12 @@ CONFIG = {
     "inner_random_state": 123,
     "n_jobs": -1,
 }
+
+
+def comparisons_dir() -> Path:
+    """Ruta al directorio de tablas y figuras del analisis de mejoras."""
+    config = load_config(DEFAULT_CONFIG_PATH)
+    return Path(config["outputs"]["root"]) / "comparisons"
 
 N_INTERACTIONS = 21  # Combinaciones de a pares dentro de los 4 grupos semanticos
 
@@ -78,7 +85,8 @@ def main() -> None:
     print("\n[FE+GROUP] GDS con FE + clases agrupadas")
     both = run_all(df, use_interactions=True, group_gds=True, label="FE+GROUP")
 
-    out_dir = Path("outputs/comparisons")
+    out_dir = comparisons_dir()
+    out_dir.mkdir(parents=True, exist_ok=True)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     rows = []
