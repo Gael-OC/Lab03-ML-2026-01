@@ -13,7 +13,7 @@ from sklearn.tree import plot_tree
 
 from data_loader import FEATURE_COLS, TARGETS
 from models import MODEL_ORDER, build_model_registry
-from significance import run_significance_tests
+from significance import load_estimators, run_significance_tests
 
 sns.set_theme(style="whitegrid", palette="colorblind", font_scale=1.0)
 MODEL_DISPLAY_NAMES = {
@@ -164,8 +164,6 @@ def analyze_feature_importance(
         ("svm_linear", "SVM lineal"),
         ("tree", "Arbol de decision"),
     ]
-
-    from significance import load_estimators
 
     for target in TARGETS:
         importance_data: dict[str, np.ndarray] = {}
