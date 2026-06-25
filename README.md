@@ -68,9 +68,13 @@ Cada columna objetivo se evalúa como un experimento independiente.
 ├── outputs/
 │   ├── tables/
 │   ├── figures/
+│   │   ├── eda/
+│   │   ├── analysis/
+│   │   ├── experiments/
+│   │   └── comparisons/
 │   ├── confusion_matrices/
 │   ├── per_class/
-│   ├── comparisons/
+│   ├── estimator_cache/
 │   └── advertencias.txt
 ├── environment.yml
 └── README.md
@@ -118,7 +122,7 @@ Como las features son binarias, no se aplicó imputación de missings ni codific
 
 ## 4. Modelos implementados
 
-Se implementaron los seis clasificadores que compara el laboratorio, cada uno dentro de un `Pipeline` con `StandardScaler` (excepto el árbol y el baseline):
+Se implementaron los cinco clasificadores fundamentales pedidos por el enunciado, cada uno dentro de un `Pipeline` con `StandardScaler` (excepto el árbol). Adicionalmente se incluye un sexto modelo baseline para referencia:
 
 ```text
 DummyClassifier         -> DummyClassifier(strategy="stratified")  (baseline)
@@ -148,7 +152,7 @@ Las grillas son reducidas a propósito, para reducir el riesgo de selección opt
 
 ## 5. Validación cruzada anidada
 
-El laboratorio usa **validación cruzada anidada** para separar correctamente la selección de hiperparámetros de la evaluación final:
+El laboratorio usa **validación cruzada anidada** para separar correctamente la selección de hiperparámetros de la evaluación final. La implementación es funcionalmente equivalente a `cross_validate(estimator=GridSearchCV(...), cv=outer_cv, ...)`, como sugiere el enunciado, pero con un bucle manual que permite persistir métricas, estimadores y advertencias por fold:
 
 ```text
 Ciclo externo (k_outer) -> estima el desempeño final
@@ -159,11 +163,11 @@ El conjunto de prueba externo nunca se usa para elegir hiperparámetros ni para 
 
 ### Número de folds
 
-El número de folds se adapta al soporte de la clase menos representada:
+El número de folds se adapta al soporte de la clase menos representada, siguiendo el criterio del enunciado:
 
 ```text
 k_outer = min(5, n_min)
-k_inner = min(3, k_outer)
+k_inner = max(2, min(3, k_outer))
 ```
 
 | Target   | n_clases | n_min | k_outer | Ratio de desbalance |
@@ -240,7 +244,7 @@ Si se mueve, ajustar la ruta en `config/paths.yaml`.
 
 ## 8. Ejecución del laboratorio
 
-Para ejecutar el flujo completo (EDA + 36 experimentos + análisis + plots + comparaciones):
+Para ejecutar el flujo principal (EDA + 30 experimentos de los 5 clasificadores sobre 6 objetivos, más 6 baselines dummy, + análisis + plots):
 
 ```bash
 python src/main.py --keep-estimators
@@ -297,14 +301,14 @@ Todos los valores se calcularon con `python src/main.py --keep-estimators`.
 
 ### 10.1 GDS (escala original, 7 clases, k=2)
 
-| Modelo | F1 macro | Balanced Acc. | ICN | Mejor config |
+| Modelo | F1 macro | Balanced Acc. | ICN crudo | Mejor config |
 |---|---:|---:|---:|---|
 | Baseline (Dummy) | 0.140 | 0.139 | 0.182 | default |
 | Regresión Logística | 0.295 ± 0.038 | 0.440 | 0.395 | `C=0.01` |
 | SVM lineal | 0.308 ± 0.023 | 0.470 | 0.415 | `C=0.01` |
 | SVM RBF | 0.335 ± 0.039 | 0.452 | 0.419 | `C=10, gamma=0.1` |
 | Árbol de decisión | 0.223 ± 0.033 | 0.412 | 0.348 | `max_depth=5, min_leaf=5` |
-| K-NN | 0.317 ± 0.033 | 0.327 | 0.357 | `manhattan, k=3, uniform` |
+| K-NN | 0.317 ± 0.033 | 0.327 | 0.357 | `manhattan, n_neighbors=3, uniform` |
 
 SVM RBF gana en ICN. Sin embargo, todos los modelos están por debajo de 0.34 de F1 macro, lo que muestra que `GDS` con 7 clases y 2 muestras en la clase más rara es un problema muy difícil. El baseline (0.140) confirma que los modelos sí están aprendiendo por encima de predecir según la distribución marginal.
 
@@ -312,66 +316,66 @@ SVM RBF gana en ICN. Sin embargo, todos los modelos están por debajo de 0.34 de
 
 ### 10.2 GDS_R1 (3 clases, k=5)
 
-| Modelo | F1 macro | Balanced Acc. | ICN | Mejor config |
+| Modelo | F1 macro | Balanced Acc. | ICN crudo | Mejor config |
 |---|---:|---:|---:|---|
 | Baseline (Dummy) | 0.337 | 0.334 | 0.368 | default |
 | Regresión Logística | 0.651 ± 0.063 | 0.765 | 0.712 | `C=0.01` |
 | SVM lineal | 0.654 ± 0.056 | 0.770 | 0.716 | `C=0.01` |
 | SVM RBF | 0.671 ± 0.058 | 0.781 | 0.729 | `C=0.1, gamma=0.01` |
 | Árbol de decisión | 0.592 ± 0.051 | 0.710 | 0.662 | `max_depth=3, min_leaf=1` |
-| K-NN | 0.689 ± 0.064 | 0.676 | 0.700 | `euclidean, k=11, distance` |
+| K-NN | 0.689 ± 0.064 | 0.676 | 0.700 | `euclidean, n_neighbors=11, distance` |
 
 K-NN tiene el F1 macro más alto (0.689), pero SVM RBF gana en ICN (0.729) y en balanced accuracy (0.781). La diferencia entre ambos no es estadísticamente significativa según McNemar-Yates.
 
 ### 10.3 GDS_R2 (3 clases, k=5, n_min=172)
 
-| Modelo | F1 macro | Balanced Acc. | ICN | Mejor config |
+| Modelo | F1 macro | Balanced Acc. | ICN crudo | Mejor config |
 |---|---:|---:|---:|---|
 | Baseline (Dummy) | 0.312 | 0.312 | 0.345 | default |
 | Regresión Logística | 0.663 ± 0.043 | 0.666 | 0.679 | `C=0.01` |
 | SVM lineal | 0.667 ± 0.048 | 0.662 | 0.681 | `C=0.01` |
 | SVM RBF | 0.675 ± 0.056 | 0.667 | 0.687 | `C=0.1, gamma=0.01` |
 | Árbol de decisión | 0.648 ± 0.032 | 0.658 | 0.669 | `max_depth=4, min_leaf=1` |
-| K-NN | 0.635 ± 0.034 | 0.618 | 0.648 | `euclidean, k=7, uniform` |
+| K-NN | 0.635 ± 0.034 | 0.618 | 0.648 | `euclidean, n_neighbors=7, uniform` |
 
-Este es el target con el desbalance más suave (ratio 3.8:1). SVM RBF lidera por ICN, pero la diferencia con SVM lineal (0.681) es mínima. McNemar-Yates no detecta diferencias significativas en este target.
+Este es el target con el desbalance más suave (ratio 3.8:1). SVM RBF lidera por ICN crudo (0.687), pero la diferencia con SVM lineal (0.681) es mínima. McNemar-Yates no detecta diferencias significativas en este target. Por ICN normalizado, la Regresión Logística gana en este target gracias a su mayor estabilidad entre folds.
 
 ### 10.4 GDS_R3 (binario, k=5)
 
-| Modelo | F1 macro | Balanced Acc. | ICN | Mejor config |
+| Modelo | F1 macro | Balanced Acc. | ICN crudo | Mejor config |
 |---|---:|---:|---:|---|
 | Baseline (Dummy) | 0.499 | 0.499 | 0.522 | default |
 | Regresión Logística | 0.764 ± 0.031 | 0.842 | 0.806 | `C=0.01` |
 | SVM lineal | 0.757 ± 0.043 | 0.836 | 0.800 | `C=0.01` |
 | SVM RBF | 0.792 ± 0.039 | 0.838 | 0.818 | `C=0.1, gamma=0.01` |
 | Árbol de decisión | 0.733 ± 0.077 | 0.795 | 0.771 | `max_depth=2, min_leaf=1` |
-| K-NN | 0.791 ± 0.033 | 0.764 | 0.792 | `euclidean, k=11, uniform` |
+| K-NN | 0.791 ± 0.033 | 0.764 | 0.792 | `euclidean, n_neighbors=11, uniform` |
 
-GDS_R3 es binario y el problema más "fácil" del laboratorio. SVM RBF y K-NN empatan en F1 macro (0.792), y SVM RBF gana en ICN. El baseline (0.499) muestra que el problema es casi adivinar al ser binario y balanceado, pero los modelos reales ganan por +0.30.
+GDS_R3 es binario y el problema más "fácil" del laboratorio. SVM RBF y K-NN tienen F1 macro casi idéntico (0.792 vs 0.791), y SVM RBF gana en ICN. El baseline (0.499) muestra que el problema es casi adivinar al ser binario y balanceado, pero los modelos reales ganan por +0.30.
 
 ### 10.5 GDS_R4 (3 clases, k=5, n_min=64)
 
-| Modelo | F1 macro | Balanced Acc. | ICN | Mejor config |
+| Modelo | F1 macro | Balanced Acc. | ICN crudo | Mejor config |
 |---|---:|---:|---:|---|
 | Baseline (Dummy) | 0.302 | 0.301 | 0.335 | default |
 | Regresión Logística | 0.532 ± 0.015 | 0.718 | 0.637 | `C=0.01` |
 | SVM lineal | 0.521 ± 0.025 | 0.709 | 0.629 | `C=0.01` |
 | SVM RBF | 0.550 ± 0.039 | 0.590 | 0.591 | `C=0.1, gamma=1` |
 | Árbol de decisión | 0.515 ± 0.027 | 0.659 | 0.603 | `max_depth=None, min_leaf=1` |
-| K-NN | 0.601 ± 0.042 | 0.593 | 0.619 | `euclidean, k=3, uniform` |
+| K-NN | 0.601 ± 0.042 | 0.593 | 0.619 | `euclidean, n_neighbors=3, uniform` |
 
-Este es el único target donde **Regresión Logística gana en ICN** (0.637). K-NN tiene el F1 macro más alto, pero su balanced accuracy es la peor del lote (0.593), lo que indica que ignora la clase minoritaria. SVM RBF también gana en F1 entre los modelos "complejos" pero con balanced accuracy baja (0.590). Regresión Logística con `class_weight="balanced"` obtiene F1=0.532 y balanced accuracy=0.718, el balance más alto del lote.
+Este es uno de los dos targets donde **Regresión Logística gana en ICN normalizado**. K-NN tiene el F1 macro más alto (0.601), pero su balanced accuracy (0.593) es la segunda más baja del lote, lo que indica que ignora parcialmente la clase minoritaria. SVM RBF tiene la balanced accuracy más baja (0.590) por un margen mínimo, aunque gana en F1 entre los modelos "complejos". Regresión Logística con `class_weight="balanced"` obtiene F1=0.532 y balanced accuracy=0.718, el balance más alto del lote.
 
 ### 10.6 GDS_R5 (3 clases, k=5, n_min=149)
 
-| Modelo | F1 macro | Balanced Acc. | ICN | Mejor config |
+| Modelo | F1 macro | Balanced Acc. | ICN crudo | Mejor config |
 |---|---:|---:|---:|---|
 | Baseline (Dummy) | 0.327 | 0.325 | 0.360 | default |
 | Regresión Logística | 0.521 ± 0.029 | 0.657 | 0.606 | `C=0.01` |
 | SVM lineal | 0.507 ± 0.030 | 0.655 | 0.599 | `C=0.01` |
 | SVM RBF | 0.549 ± 0.011 | 0.664 | 0.622 | `C=0.1, gamma=scale` |
 | Árbol de decisión | 0.509 ± 0.045 | 0.620 | 0.585 | `max_depth=None, min_leaf=1` |
-| K-NN | 0.584 ± 0.043 | 0.571 | 0.600 | `euclidean, k=5, distance` |
+| K-NN | 0.584 ± 0.043 | 0.571 | 0.600 | `euclidean, n_neighbors=5, distance` |
 
 En GDS_R5, SVM RBF gana por ICN (0.622) con el std más bajo del lote (0.011), lo que indica resultados muy estables entre folds. K-NN tiene el F1 macro más alto (0.584 vs 0.549 de RBF) pero su balanced accuracy es la peor del lote (0.571), otra vez señal de que ignora la clase minoritaria. Es el mismo patrón de GDS_R1 y GDS_R3: K-NN optimiza la métrica de acierto global pero pierde recall en las clases con menos soporte.
 
@@ -381,29 +385,31 @@ Para ordenar modelos **dentro de un mismo target** se usa el ICN normalizado (co
 
 **Tabla 10.7a — Mejor modelo por target según ICN normalizado:**
 
+El criterio de selección dentro de cada target es el **ICN normalizado** (escala 0–1, comparable solo entre modelos del mismo target). La columna *ICN crudo* muestra el valor absoluto del ganador.
+
 | Target   | Mejor modelo          | F1 macro | ICN crudo | Comentario                                          |
 |----------|-----------------------|---------:|----------:|-----------------------------------------------------|
 | GDS      | SVM RBF               |    0.335 |     0.419 | 7 clases, k=2, caso muy difícil                     |
-| GDS_R1   | SVM RBF               |    0.671 |     0.729 | Empate técnico con K-NN, no significativo           |
-| GDS_R2   | SVM RBF               |    0.675 |     0.687 | SVM RBF domina; el target es el más balanceado     |
-| GDS_R3   | SVM RBF               |    0.792 |     0.818 | Empate con K-NN en F1 (0.792)                       |
-| GDS_R4   | Regresión Logística   |    0.532 |     0.637 | Único target donde LR gana, por estabilidad         |
+| GDS_R1   | SVM RBF               |    0.671 |     0.729 | Empate técnico con K-NN por F1 (0.689), RBF gana por BA |
+| GDS_R2   | Regresión Logística   |    0.663 |     0.679 | LR gana por ICN_norm; SVM RBF lidera por ICN crudo y F1 |
+| GDS_R3   | SVM RBF               |    0.792 |     0.818 | Diferencia mínima con K-NN en F1 (0.792 vs 0.791), RBF gana por ICN |
+| GDS_R4   | Regresión Logística   |    0.532 |     0.637 | LR gana por estabilidad y BA; K-NN lidera por F1    |
 | GDS_R5   | SVM RBF               |    0.549 |     0.622 | SVM RBF con std=0.011, el más estable del lote     |
 
-**SVM RBF gana en 5 de 6 targets por ICN** y en los **6 targets por F1 macro**. Esto muestra que el kernel no lineal captura estructura que el lineal no ve, pero no siempre: en GDS_R4, donde la estructura de las tres clases es aproximadamente lineal y el soporte de las clases extremas es bajo, la regularización fuerte de LR generaliza mejor que la flexibilidad de RBF.
+**SVM RBF gana en 4 de 6 targets por ICN**, Regresión Logística gana en 2 (\texttt{GDS\_R2} y \texttt{GDS\_R4}). Por F1 macro, la distribución es distinta: SVM RBF gana en 3 targets (GDS, GDS_R2, GDS_R3) y K-NN en 3 (GDS_R1, GDS_R4, GDS_R5). Esto refleja que K-NN optimiza la métrica global pero pierde balanced accuracy, mientras que SVM RBF y LR tienen mejor equilibrio entre F1 y BA. La métrica más adecuada para ordenar modelos en un problema desbalanceado es el ICN, que pondera F1, BA, recall, precision y estabilidad.
 
-**Tabla 10.7b — Ranking de dificultad de los targets (ICN crudo del mejor modelo):**
+**Tabla 10.7b — Ranking de dificultad de los targets (ICN crudo del mejor modelo, ordenado de mayor a menor):**
 
 | Rank | Target   | Mejor F1 | Mejor ICN crudo | n_clases | n_min | k_outer |
 |-----:|----------|---------:|----------------:|---------:|------:|--------:|
 |    1 | GDS_R3   |    0.792 |           0.818 |        2 |   172 |       5 |
 |    2 | GDS_R1   |    0.671 |           0.729 |        3 |    22 |       5 |
 |    3 | GDS_R2   |    0.675 |           0.687 |        3 |   172 |       5 |
-|    4 | GDS_R5   |    0.549 |           0.622 |        3 |   149 |       5 |
-|    5 | GDS_R4   |    0.532 |           0.637 |        3 |    64 |       5 |
+|    4 | GDS_R4   |    0.532 |           0.637 |        3 |    64 |       5 |
+|    5 | GDS_R5   |    0.549 |           0.622 |        3 |   149 |       5 |
 |    6 | GDS      |    0.335 |           0.419 |        7 |     2 |       2 |
 
-**Lectura del ranking:** la dificultad del problema no depende solo del número de clases. GDS_R5 (3 clases, n_min=149) es más difícil que GDS_R1 (3 clases, n_min=22), porque las tres clases de GDS_R5 están más solapadas en el espacio de features. Lo que finalmente pesa es la **separabilidad** de las clases en el espacio de los 15 atributos, no la cantidad de clases ni el desbalance por sí solos. GDS es intrínsecamente el más difícil porque sus 7 niveles colapsan en el mismo conjunto binario de respuestas correctas/incorrectas, lo que hace que las clases 5, 6 y 7 sean casi indistinguibles.
+**Lectura del ranking:** la dificultad del problema no depende solo del número de clases. GDS_R4 (3 clases, n_min=64) y GDS_R5 (3 clases, n_min=149) son más difíciles que GDS_R1 (3 clases, n_min=22), porque las clases intermedias de GDS_R4 y GDS_R5 están más solapadas en el espacio de features. Lo que finalmente pesa es la **separabilidad** de las clases en el espacio de los 15 atributos, no la cantidad de clases ni el desbalance por sí solos. GDS es intrínsecamente el más difícil porque sus 7 niveles colapsan en el mismo conjunto binario de respuestas correctas/incorrectas, lo que hace que las clases 5, 6 y 7 sean casi indistinguibles.
 
 ---
 
@@ -413,14 +419,14 @@ Esta es la comparación más controlada del laboratorio, porque ambos modelos co
 
 | Target   | SVM lineal F1 | SVM RBF F1 | ΔF1 (RBF - lin) | RBF gana? | McNemar-Yates p-value | Significativo? |
 |----------|--------------:|-----------:|----------------:|:---------:|----------------------:|:--------------:|
-| GDS      |         0.308 |      0.335 |           +0.027 |    Sí     |              < 0.001 |       Sí       |
-| GDS_R1   |         0.654 |      0.671 |           +0.017 |    Sí     |                 0.32 |       No       |
-| GDS_R2   |         0.667 |      0.675 |           +0.008 |    Sí     |                 0.40 |       No       |
+| GDS      |         0.308 |      0.335 |           +0.028 |    Sí     |                 0.808 |       No       |
+| GDS_R1   |         0.654 |      0.671 |           +0.017 |    Sí     |                 0.200 |       No       |
+| GDS_R2   |         0.667 |      0.675 |           +0.008 |    Sí     |                 0.341 |       No       |
 | GDS_R3   |         0.757 |      0.792 |           +0.034 |    Sí     |              < 0.001 |       Sí       |
-| GDS_R4   |         0.521 |      0.550 |           +0.029 |    Sí     |                0.027 |       Sí       |
+| GDS_R4   |         0.521 |      0.550 |           +0.029 |    Sí     |              < 0.001 |       Sí       |
 | GDS_R5   |         0.507 |      0.549 |           +0.042 |    Sí     |              < 0.001 |       Sí       |
 
-**Lectura:** SVM RBF gana en los 6 targets por F1 macro, pero la magnitud de la mejora varía entre +0.008 (GDS_R2) y +0.042 (GDS_R5). La diferencia es estadísticamente significativa en 4 de 6 targets según McNemar-Yates. En GDS_R1 y GDS_R2 la mejora es modesta (≤+0.017) y no alcanza significancia, lo que indica que en estos targets el problema es aproximadamente separable por una frontera lineal y RBF no aporta valor real más allá de la complejidad. En los otros 4 targets (GDS, GDS_R3, GDS_R4, GDS_R5) la mejora es estadísticamente significativa y consistente con la hipótesis de que existe estructura no lineal en los datos que el kernel RBF captura.
+**Lectura:** SVM RBF gana en los 6 targets por F1 macro, pero la magnitud de la mejora varía entre +0.008 (GDS_R2) y +0.042 (GDS_R5). La diferencia es estadísticamente significativa solo en 3 de 6 targets según McNemar-Yates (GDS_R3, GDS_R4, GDS_R5). En GDS, GDS_R1 y GDS_R2 la mejora no alcanza significancia, lo que indica que en estos targets el problema es aproximadamente separable por una frontera lineal y RBF no aporta valor real más allá de la complejidad. En GDS el test no tiene potencia por $k_{\text{outer}}=2$, por lo que la diferencia observada (+0.028) no se puede confirmar estadísticamente.
 
 Un detalle relevante: en GDS_R4, RBF gana por F1 macro pero pierde por ICN, porque su balanced accuracy es 0.590 contra 0.718 de LR. Esto es coherente con un patrón típico de sobreajuste local: el kernel RBF ajusta muy bien las observaciones de entrenamiento de la clase mayoritaria, pero pierde recall en las clases minoritarias. En un dataset con solo 64 muestras en la clase minoritaria, la frontera no lineal tiene más riesgo de memorizar que de generalizar.
 
@@ -449,7 +455,7 @@ Observaciones:
 
 - El **Árbol de Decisión** muestra el mayor Δsesgo en `GDS` (0.080), lo que confirma que sobreajusta a las pocas muestras de las clases raras.
 - **K-NN** también muestra Δsesgo alto en `GDS` (0.107) por la misma razón.
-- Varios modelos dan Δsesgo **negativo** (RBF en GDS, GDS_R1, GDS_R2, GDS_R5). Esto se interpreta como ruido muestral: el fold externo resultó más fácil que el interno por azar, no como "validación más conservadora". Con k=2 o k=5 y datos pequeños, esto ocurre con frecuencia.
+- Varios modelos dan Δsesgo **negativo** (RBF en GDS, GDS_R2, GDS_R5; SVM lineal en GDS_R1 y GDS_R4; Árbol en GDS_R2; K-NN en GDS_R5). Esto se interpreta como ruido muestral: el fold externo resultó más fácil que el interno por azar, no como "validación más conservadora". Con k=2 o k=5 y datos pequeños, esto ocurre con frecuencia.
 
 ---
 
@@ -500,35 +506,38 @@ Hallazgos principales:
 
 `outputs/tables/zero_recall_classes.csv` lista las clases con recall = 0.0:
 
-| Target | Modelo | Clase | Support |
-|---|---|---:|---:|
-| GDS   | Árbol de decisión | 6 | 20 |
-| GDS   | K-NN              | 7 | 2  |
+| Target   | Modelo            | Clase | Support |
+|----------|-------------------|------:|--------:|
+| GDS      | Baseline (Dummy)  |     6 |      20 |
+| GDS      | Baseline (Dummy)  |     7 |       2 |
+| GDS      | Árbol de decisión |     6 |      20 |
+| GDS      | K-NN              |     7 |       2 |
+| GDS_R1   | Baseline (Dummy)  |     3 |      22 |
 
-Adicionalmente, `outputs/tables/low_support_classes.csv` lista todas las clases con soporte menor a 10. En `GDS`, la clase 6 (20 muestras) y la clase 7 (2 muestras) son estructuralmente difíciles para todos los modelos.
+Adicionalmente, `outputs/tables/low_support_classes.csv` lista las clases con soporte menor a 10. En `GDS`, la clase 7 (2 muestras) es la única con soporte menor a 10; la clase 6 (20 muestras) está sobre el umbral, pero igual aparece como clase estructuralmente difícil por su solapamiento con la 5 y la 4 (ver matriz de confusión de la sección 15.1).
 
-No se reportan clases con recall=0 fuera de `GDS`. El resto de los targets tiene `n_min >= 22`, suficiente para que los modelos aprendan al menos un patrón.
+El `Baseline (Dummy)` no es un modelo entrenado: cuando una clase cae en folds donde su soporte de test es 0 (caso típico de clases raras) o cuando el clasificador marginal no la predice, su recall es 0. Esto es esperable y no es un defecto del pipeline. Fuera de las filas del Dummy, no se reportan clases con recall=0 en el resto de los targets.
 
 ### 15.1 Análisis de matrices de confusión agregadas
 
-El recall por clase del mejor modelo de cada target (SVM RBF en 5/6 casos, LR en GDS_R4) muestra dónde fallan los clasificadores y revela patrones distintos según la formulación del problema. Las matrices se construyen concatenando las predicciones de los 5 folds externos (o 2 en GDS), de modo que cada celda representa el total de ejemplos del set de test.
+El recall por clase del mejor modelo de cada target (SVM RBF en 4/6 casos, Regresión Logística en GDS_R2 y GDS_R4) muestra dónde fallan los clasificadores y revela patrones distintos según la formulación del problema. Las matrices se construyen concatenando las predicciones de los 5 folds externos (o 2 en GDS), de modo que cada celda representa el total de ejemplos del set de test.
 
 | Target   | Clase mayoritaria recall | Clase minoritaria recall | Confusión típica |
 |----------|-------------------------:|-------------------------:|------------------|
 | GDS      | clase 1 → 0.58 (n=149)  | clase 7 → 1.00 (n=2)     | clases 1↔2, 2↔3 adyacentes se confunden |
 | GDS_R1   | clase 1 → 0.83 (n=947)  | clase 3 → 0.82 (n=22)    | clase 1 ↔ 2 (154 errores)                |
-| GDS_R2   | clase 1 → 0.79 (n=649)  | clase 2 → 0.60 (n=298)   | clase 1 ↔ 2 (133), clase 2 ↔ 3 (60)      |
+| GDS_R2   | clase 1 → 0.79 (n=649)  | clase 2 → 0.54 (n=298)   | clase 1 → 2 (131) y 2 → 1 (89)           |
 | GDS_R3   | clase 1 → 0.89 (n=947)  | clase 3 → 0.79 (n=172)   | errores balanceados entre las dos clases |
-| GDS_R4   | clase 2 → 0.74 (n=906)  | clase 1 → 0.50 (n=149)   | clase 1 se sub-predice, se va a 2       |
+| GDS_R4   | clase 2 → 0.53 (n=906)  | clase 1 → 0.77 (n=149)   | clase 2 → 1 (345), clase 2 → 3 (82)      |
 | GDS_R5   | clase 2 → 0.50 (n=798)  | clase 3 → 0.79 (n=172)   | clase 2 → 3 (118), clase 1 → 2 (41)     |
 
 **Lectura por target:**
 
 - **GDS** (7 clases, k=2): la matriz muestra la estructura típica de un problema ordinal mal aprendido. Los errores se concentran entre clases adyacentes en la escala (1↔2, 2↔3, 3↔4), que es el patrón esperado cuando los modelos lineales o RBF no tienen suficiente resolución ordinal. La clase 7 muestra recall=1.0 con solo 2 muestras, pero esto es un artefacto: al ser k=2 con la clase 7 entera en un solo fold, ambos ejemplos cayeron en el mismo fold de test y se predijeron correctamente. **No se debe interpretar como "el modelo aprendió la clase 7"**, sino como ruido muestral.
 - **GDS_R1** (3 clases): la clase mayoritaria (1) tiene 947 muestras, pero aun así se confunde 154 veces con la clase 2. La clase minoritaria (3, n=22) tiene un recall sorprendentemente alto (0.82), lo que confirma que `class_weight="balanced"` está funcionando.
-- **GDS_R2** (3 clases, el más balanceado): la clase 1 (n=649) se confunde con la 2 (133 errores), y la 2 (n=298) se confunde con la 3 (60 errores). Los errores están en la frontera ordinal, lo que sugiere que la escala subyacente es continua y los modelos la aproximan con clases discretas.
+- **GDS_R2** (3 clases, el más balanceado): la clase 1 (n=649) se confunde con la 2 (131 errores directos), la clase 2 (n=298) envía 89 errores a la 1 y 49 a la 3, y la clase 3 (n=172) envía 48 errores a la 2. Los errores están en la frontera ordinal, lo que sugiere que la escala subyacente es continua y los modelos la aproximan con clases discretas. El mejor modelo aquí es Regresión Logística (no SVM RBF) por ICN, con F1 macro 0.663.
 - **GDS_R3** (binario, el más fácil): los errores están bien balanceados (104 de la clase 1 van a 3, 37 de la 3 van a 1). El modelo predice la clase mayoritaria con recall=0.89.
-- **GDS_R4** (3 clases, n_min=64): la clase 1 (n=149) se sub-predice — 75 de sus ejemplos se van a la clase 2. Esto explica por qué LR gana en este target: con solo 149 ejemplos de la clase 1 y una frontera aproximadamente lineal hacia la clase 2, RBF sobreajusta localmente mientras que LR generaliza mejor.
+- **GDS_R4** (3 clases, n_min=64): la mejor matriz es de Regresión Logística (no SVM RBF). La clase mayoritaria (2, n=906) tiene recall=0.53, lo que indica que se confunde mucho con la clase 1 (345 errores van de 2 a 1) y con la clase 3 (82 errores van de 2 a 3). Esto explica por qué LR gana en este target: con frontera aproximadamente lineal y estructura de clases difusa, RBF sobreajusta localmente mientras que LR generaliza mejor. SVM RBF tiene mayor F1 macro (0.550) pero menor balanced accuracy (0.590 vs 0.718 de LR).
 - **GDS_R5** (3 clases): la clase 2 (n=798) tiene recall de solo 0.50, y la clase 1 (n=149) se va 41 veces a la 2. La distribución de errores muestra que el target tiene solapamiento real entre las clases 1 y 2, no un problema del modelo.
 
 **Conclusión general sobre las matrices:** los errores se concentran en clases adyacentes en la escala ordinal, lo que es la firma de un problema donde la escala GDS es intrínsecamente continua y los modelos la discretizan. Esto refuerza la idea de que el problema no se resuelve con mejores modelos, sino con datos más finos o con formulaciones que exploten la naturaleza ordinal (regresión ordinal, por ejemplo).
@@ -567,14 +576,14 @@ Para entender qué dimensión cognitiva aporta más a la predicción de cada niv
 
 | Target   | Orient. temporal | Orient. espacial | Memoria verbal | Memoria geográfica | Feature top |
 |----------|-----------------:|-----------------:|---------------:|-------------------:|-------------|
-| GDS      |            0.289 |            0.314 |          0.198 |              0.199 | `Mes`       |
-| GDS_R1   |            0.318 |            0.295 |          0.185 |              0.201 | `NumeroPiso`|
-| GDS_R2   |            0.293 |            0.167 |          0.264 |              0.275 | `A682`      |
-| GDS_R3   |            0.295 |            0.176 |          0.247 |              0.282 | `A682`      |
-| GDS_R4   |            0.283 |            0.207 |          0.260 |              0.249 | `A682`      |
-| GDS_R5   |            0.277 |            0.167 |          0.280 |              0.276 | `A682`      |
+| GDS      | 0.267 | 0.358 | 0.159 | 0.216 | `País`      |
+| GDS_R1   | 0.298 | 0.333 | 0.147 | 0.222 | `Ciudad`    |
+| GDS_R2   | 0.307 | 0.117 | 0.227 | 0.349 | `A682`      |
+| GDS_R3   | 0.291 | 0.118 | 0.192 | 0.398 | `Copiapo2`  |
+| GDS_R4   | 0.395 | 0.148 | 0.254 | 0.203 | `Mes`       |
+| GDS_R5   | 0.280 | 0.113 | 0.247 | 0.360 | `Copiapo2`  |
 
-**Lectura:** la importancia de las dimensiones cambia según el target. Para `GDS` y `GDS_R1` (que conservan la granularidad alta de la escala), predominan **orientación temporal** y **espacial** — son las dimensiones más sensibles al deterioro cognitivo temprano, porque un fallo en `Mes`, `Año` o `NúmeroPiso` ya indica desorientación. En cambio, para los targets reagrupados en 3 clases (`GDS_R2`, `GDS_R4`, `GDS_R5`) y para el binario (`GDS_R3`), las **memorias** (verbal y geográfica, especialmente `A682`) ganan peso. Esto tiene sentido clínico: cuando el deterioro es moderado a severo, las fallas se generalizan y la memoria se vuelve más discriminante que la orientación. La consistencia del feature top `A682` en 5 de 6 targets (y `NumeroPiso` en GDS_R1) refuerza que existe un subconjunto pequeño de atributos que carga la mayor parte del poder predictivo, lo que también se refleja en la profundidad baja de los árboles (sección 16).
+**Lectura:** la importancia de las dimensiones cambia según el target. Para `GDS` y `GDS_R1` (que conservan la granularidad alta de la escala), predominan **orientación temporal** y **espacial** — son las dimensiones más sensibles al deterioro cognitivo temprano, porque un fallo en `País` o `Ciudad` ya indica desorientación. En cambio, para los targets reagrupados en 3 clases (`GDS_R2`, `GDS_R5`) y para el binario (`GDS_R3`), la **memoria geográfica** gana peso (top feature: `A682` o `Copiapo2`). Esto tiene sentido clínico: cuando el deterioro es moderado a severo, las fallas se generalizan y la memoria se vuelve más discriminante que la orientación. El top feature varía entre los 6 targets (País, Ciudad, A682, Copiapo2, Mes, Copiapo2), lo que confirma que no hay un único atributo dominante, sino que la formulación del problema cambia qué feature es más informativa.
 
 ---
 
@@ -590,7 +599,9 @@ Observaciones:
 
 ---
 
-## 19. Comparación con feature engineering y agrupación de clases raras
+## 19. Análisis adicional: feature engineering y agrupación de clases raras
+
+> **Nota:** esta sección corresponde a un análisis exploratorio **adicional** al requerimiento del laboratorio. El enunciado pide los 5 clasificadores sobre los 6 objetivos originales (15 atributos binarios). Los experimentos de interacciones y agrupación se ejecutaron solo sobre `GDS` para explorar si la dificultad extrema de ese target podría mitigarse.
 
 Adicionalmente, se corrieron dos mejoras sobre el pipeline base para `GDS`:
 
@@ -642,7 +653,7 @@ Más allá de la métrica, el PDF pide comparar modelos por **equilibrio entre d
 
 ## 19.2 Efecto de `class_weight="balanced"`
 
-Todos los modelos que lo soportan (LR, SVM lineal, SVM RBF, Árbol) usan `class_weight="balanced"`, que asigna un peso inversamente proporcional a la frecuencia de cada clase en la función de pérdida. K-NN no lo soporta, pero se compensa parcialmente con `weights="distance"` en la mayoría de los folds ganadores. Esta elección se justificó en el diseño porque sin ella, los modelos tenderían a predecir siempre la clase mayoritaria, elevando la accuracy por encima del 80% pero colapsando el F1 macro bajo 0.10 en los targets desbalanceados.
+Todos los modelos que lo soportan (LR, SVM lineal, SVM RBF, Árbol) usan `class_weight="balanced"`, que asigna un peso inversamente proporcional a la frecuencia de cada clase en la función de pérdida. K-NN no lo soporta; en la grilla explorada, `weights="uniform"` ganó en 21 folds externos y `weights="distance"` en 6, por lo que la mayoría de los modelos K-NN ajustados usan `uniform`. Esta elección se justificó en el diseño porque sin `class_weight`, los modelos tenderían a predecir siempre la clase mayoritaria, elevando la accuracy por encima del 80% pero colapsando el F1 macro bajo 0.10 en los targets desbalanceados.
 
 Una validación indirecta del efecto se observa en GDS_R1: la clase minoritaria (3, n=22) tiene recall=0.82 con `class_weight="balanced"`, mientras que el baseline DummyClassifier tiene recall=0 sobre esa misma clase. Sin el balanceo, un modelo ingenuo predeciría siempre clase 1 (n=947) y lograría accuracy≈0.85 con F1 macro≈0.16. Con el balanceo, F1 macro sube a 0.65-0.69.
 
@@ -677,8 +688,8 @@ La configuración final del laboratorio fue:
 
 ```text
 modelos       = Dummy + LR + SVM lineal + SVM RBF + Árbol + K-NN
-validación    = anidada con k_outer = min(5, n_min), k_inner = min(3, k_outer)
-grillas       = reducidas (≤ 16 combinaciones por modelo)
+validación    = anidada con k_outer = min(5, n_min), k_inner = max(2, min(3, k_outer))
+grillas       = reducidas (4-20 combinaciones por modelo)
 métrica       = f1_macro para selección interna
 features      = 15 atributos binarios (sin feature engineering)
 targets       = GDS, GDS_R1, GDS_R2, GDS_R3, GDS_R4, GDS_R5
@@ -706,15 +717,15 @@ El laboratorio permitió comparar cinco clasificadores fundamentales sobre seis 
 
 ### ¿Cuál clasificador gana en cada target?
 
-SVM RBF gana en los 6 targets por F1 macro y en 5 de 6 por ICN normalizado (tabla 10.7a). La única excepción es `GDS_R4`, donde la Regresión Logística gana por ICN gracias a su estabilidad (std=0.015 vs 0.039 de RBF) y su mejor balanced accuracy (0.718 vs 0.590). Este único caso de victoria de LR es la confirmación práctica del mensaje central del laboratorio: el modelo más complejo no siempre gana.
+SVM RBF gana en 3 targets por F1 macro (GDS, GDS_R2, GDS_R3) y K-NN en 3 (GDS_R1, GDS_R4, GDS_R5). Por ICN normalizado, SVM RBF gana en 4 de 6 y Regresión Logística en 2 (GDS_R2 y GDS_R4). Esta diferencia es importante: K-NN optimiza la métrica global pero pierde balanced accuracy, mientras que SVM RBF y LR tienen mejor equilibrio entre F1 y BA. La métrica más adecuada para ordenar modelos en un problema desbalanceado es el ICN, que pondera F1, BA, recall, precision y estabilidad. Los casos donde LR gana (GDS_R2 y GDS_R4) son la confirmación práctica del mensaje central del laboratorio: el modelo más complejo no siempre gana.
 
 ### ¿La Regresión Logística es competitiva frente a modelos no lineales?
 
-Sí. En `GDS_R4` gana por ICN, en `GDS_R2` queda a 0.008 puntos de F1 de SVM RBF, y en todos los demás targets está dentro de 0.04 de F1 del mejor modelo. Su grilla colapsa en `C=0.01` consistentemente (4-5 de 5 folds externos), lo que sugiere que la regularización alta es lo que le da estabilidad, no el modelo en sí. La diferencia es que SVM RBF ajusta mejor el sesgo de los datos de entrenamiento, pero a costa de mayor varianza entre folds.
+Sí. En `GDS_R2` y `GDS_R4` gana por ICN gracias a su buena balanced accuracy (0.666 y 0.718 vs 0.667 y 0.590 de RBF) y, en el caso de GDS_R4, su baja varianza entre folds (std=0.015). En los demás targets queda dentro de 0.04 de F1 del mejor modelo. Su grilla colapsa en `C=0.01` consistentemente (3-5 de 5 folds externos, dependiendo del target), lo que sugiere que la regularización alta es lo que le da estabilidad, no el modelo en sí. La diferencia es que SVM RBF ajusta mejor el sesgo de los datos de entrenamiento, pero a costa de mayor varianza entre folds.
 
 ### ¿El kernel RBF mejora realmente al SVM lineal?
 
-Sí, pero con matices. Gana en los 6 targets por F1 macro con mejoras entre +0.008 (GDS_R2) y +0.042 (GDS_R5). La mejora es estadísticamente significativa en 4 de 6 targets según McNemar-Yates (tabla 11). En GDS_R1 y GDS_R2, donde la estructura del problema es aproximadamente lineal, la mejora no es significativa y la complejidad de RBF no se justifica. En GDS, GDS_R3, GDS_R4 y GDS_R5 la mejora es real, lo que indica que existe estructura no lineal en estos sub-problemas.
+Sí, pero con matices. Gana en los 6 targets por F1 macro con mejoras entre +0.008 (GDS_R2) y +0.042 (GDS_R5). La mejora es estadísticamente significativa solo en 3 de 6 targets según McNemar-Yates (GDS_R3, GDS_R4, GDS_R5). En GDS, GDS_R1 y GDS_R2, donde la estructura del problema es aproximadamente lineal o los folds son muy pocos, la mejora no es significativa y la complejidad de RBF no se justifica estadísticamente. En GDS el test no tiene potencia por $k_{\text{outer}}=2$.
 
 ### ¿El Árbol de decisión entrega reglas interpretables sin perder demasiado desempeño?
 
@@ -722,7 +733,7 @@ Sí en interpretabilidad, no en desempeño. Los árboles resultantes tienen prof
 
 ### ¿K-NN es estable o depende demasiado de k y la distancia?
 
-Depende. K-NN gana en F1 macro en 3 targets (GDS_R1, GDS_R3, GDS_R5), pero en todos ellos su balanced accuracy es la peor del lote, lo que indica que ignora la clase minoritaria. La configuración ganadora varía entre folds sin un patrón claro (k=3 a k=11, euclidean/manhattan, uniform/distance), lo que lo hace el modelo menos confiable para producción. Para el informe, vale la pena mostrar que K-NN tiene buen F1 pero no es robusto al desbalance, a diferencia de los SVM con `class_weight="balanced"`.
+Depende. K-NN gana en F1 macro en 3 targets (GDS_R1, GDS_R3, GDS_R5), pero en todos ellos su balanced accuracy es la peor del lote, lo que indica que ignora la clase minoritaria. La configuración ganadora varía entre folds sin un patrón claro (n_neighbors=3 a n_neighbors=11, euclidean/manhattan, uniform/distance), lo que lo hace el modelo menos confiable para producción. Para el informe, vale la pena mostrar que K-NN tiene buen F1 pero no es robusto al desbalance, a diferencia de los SVM con `class_weight="balanced"`.
 
 ### ¿Qué objetivo es el más difícil de predecir y por qué?
 
@@ -730,7 +741,7 @@ Depende. K-NN gana en F1 macro en 3 targets (GDS_R1, GDS_R3, GDS_R5), pero en to
 
 ### ¿Existen clases con recall muy bajo?
 
-Sí, en `GDS` exclusivamente. La clase 6 (n=20) tiene recall=0.25 con SVM RBF y 0.0 con Árbol, y la clase 7 (n=2) tiene recall=0.0 con Árbol y K-NN. Estas son las dos clases estructuralmente más raras (sección 15). En los demás targets no hay clases con recall=0, lo que confirma que `n_min ≥ 22` es suficiente para que los modelos aprendan al menos un patrón.
+Sí, en `GDS` exclusivamente (considerando los cinco modelos entrenados, no el Baseline Dummy). La clase 6 (n=20) tiene recall=0.25 con SVM RBF y 0.0 con Árbol, y la clase 7 (n=2) tiene recall=0.0 con Árbol y K-NN. Estas son las dos clases estructuralmente más raras (sección 15). En los demás targets no hay clases con recall=0, lo que confirma que `n_min ≥ 22` es suficiente para que los modelos aprendan al menos un patrón.
 
 ### ¿Hay evidencia de sobreajuste en algún modelo?
 
