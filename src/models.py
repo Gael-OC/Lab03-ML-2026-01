@@ -48,7 +48,7 @@ def build_model_registry(random_state: int = 42) -> dict[str, ModelSpec]:
             implemented=True,
             pipeline=Pipeline([
                 ("scaler", StandardScaler()),
-                ("clf", SVC(kernel="linear", class_weight="balanced", random_state=random_state)),
+                ("clf", SVC(kernel="linear", class_weight="balanced")),
             ]),
             param_grid={"clf__C": [0.01, 0.1, 1, 10]},
         ),
@@ -58,7 +58,7 @@ def build_model_registry(random_state: int = 42) -> dict[str, ModelSpec]:
             implemented=True,
             pipeline=Pipeline([
                 ("scaler", StandardScaler()),
-                ("clf", SVC(kernel="rbf", class_weight="balanced", random_state=random_state)),
+                ("clf", SVC(kernel="rbf", class_weight="balanced")),
             ]),
             param_grid={
                 "clf__C": [0.1, 1, 10],
