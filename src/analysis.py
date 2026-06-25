@@ -52,7 +52,7 @@ def run_advanced_analysis(
     detect_low_support_classes(results_by_target, tables_dir)
 
     print("[analysis] decision tree visualization...")
-    visualize_decision_trees(df, figures_dir)
+    visualize_decision_trees(df, figures_dir, estimator_cache_dir=estimator_cache_dir)
 
     print("[analysis] per-fold stability...")
     analyze_per_fold_stability(results_by_target, figures_dir)
@@ -359,20 +359,43 @@ def detect_low_support_classes(
 
 # Visualización del árbol de decisión
 
-def visualize_decision_trees(df: pd.DataFrame, output_dir: Path) -> None:
-    from sklearn.tree import DecisionTreeClassifier
+def visualize_decision_trees(
+    df: pd.DataFrame,
+    output_dir: Path,
+    estimator_cache_dir: Path | None = None,
+) -> None:
+    """Visualiza el árbol de decisión por target.
 
+    Si hay cache de estimadores, usa el best_estimator_ del primer
+    fold externo (que ya tiene los hiperparametros seleccionados por
+    GridSearchCV y el scaler entrenado en su fold de entrenamiento).
+    Si no hay cache, entrena un Arbol global con max_depth=4 como
+    fallback. La visualizacion usa el Arbol del Pipeline (sin scaler,
+    porque el Arbol no lo usa).
+    """
     for target in TARGETS:
         X = df[FEATURE_COLS].astype(float)
         y = df[target].astype(int)
         unique_classes = sorted(y.unique())
 
-        tree = DecisionTreeClassifier(
-            class_weight="balanced",
-            random_state=42,
-            max_depth=4,
-        )
-        tree.fit(X, y)
+        tree = None
+        if estimator_cache_dir is not None:
+            payload = load_estimators(estimator_cache_dir, target, "tree")
+            if payload is not None and payload["estimators"]:
+                tree = payload["estimators"][0].named_steps["clf"]
+
+        if tree is None:
+            from sklearn.tree import DecisionTreeClassifier
+            tree = DecisionTreeClassifier(
+                class_weight="balanced",
+                random_state=42,
+                max_depth=4,
+            )
+            tree.fit(X, y)
+            title_suffix = "max_depth=4 (fallback)"
+        else:
+            depth = tree.get_depth()
+            title_suffix = f"mejor fold externo (max_depth={depth})"
 
         fig, ax = plt.subplots(figsize=(20, 12))
         plot_tree(
@@ -384,7 +407,7 @@ def visualize_decision_trees(df: pd.DataFrame, output_dir: Path) -> None:
             fontsize=9,
             ax=ax,
         )
-        ax.set_title(f"Árbol de decisión — {target} (max_depth=4)", fontweight="bold", fontsize=14)
+        ax.set_title(f"Árbol de decisión — {target} ({title_suffix})", fontweight="bold", fontsize=14)
         fig.tight_layout()
         fig.savefig(output_dir / f"decision_tree_{target}.png", dpi=300, bbox_inches="tight")
         plt.close(fig)
