@@ -68,8 +68,9 @@ def main() -> None:
     results_by_target = {}
 
     estimator_cache_dir = (
-        output_dirs.get("root", Path("outputs")) / "estimator_cache"
-        if args.keep_estimators else None
+        output_dirs["estimator_cache"]
+        if args.keep_estimators and "estimator_cache" in output_dirs
+        else None
     )
 
     for target_name in target_names:

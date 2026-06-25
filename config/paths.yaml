@@ -9,6 +9,10 @@ outputs:
   figures: "outputs/figures"
   confusion_matrices: "outputs/confusion_matrices"
   per_class: "outputs/per_class"
+  # Cache de estimadores por (target, modelo). Solo se llena cuando se
+  # ejecuta con --keep-estimators. Se usa para tests de significancia
+  # sin reentrenar la validacion anidada.
+  estimator_cache: "outputs/estimator_cache"
 
 experiment:
   targets:
