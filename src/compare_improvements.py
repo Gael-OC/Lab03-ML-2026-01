@@ -4,7 +4,6 @@ Genera una tabla comparativa para cada target con ambos enfoques.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +28,8 @@ CONFIG = {
     "n_jobs": -1,
 }
 
+N_INTERACTIONS = 21  # Combinaciones de a pares dentro de los 4 grupos semanticos
+
 
 def run_all(df: pd.DataFrame, use_interactions: bool, group_gds: bool, label: str) -> dict:
     df_work = group_rare_gds_classes(df, threshold=50) if group_gds else df.copy()
@@ -40,6 +41,7 @@ def run_all(df: pd.DataFrame, use_interactions: bool, group_gds: bool, label: st
             continue
 
         X, y = prepare_xy(df_work, target, use_interactions=use_interactions)
+        n_features = X.shape[1]
         n_min, k_outer = compute_outer_folds(y, CONFIG["max_outer_folds"])
         distribution = {int(k): int(v) for k, v in y.value_counts().sort_index().items()}
         target_results = []
@@ -50,12 +52,13 @@ def run_all(df: pd.DataFrame, use_interactions: bool, group_gds: bool, label: st
                 result = run_nested_cv(X, y, target, spec, CONFIG)
             else:
                 result = unimplemented_result(target, spec, distribution, n_min, k_outer)
+            result["n_features"] = n_features
             target_results.append(result)
 
         assign_icn(target_results)
         compute_delta_sesgo(target_results)
         results[target] = target_results
-        print(f"  {label} | {target} | n_min={n_min} | F1_max={max(r['f1_macro_mean'] or 0 for r in target_results):.4f}")
+        print(f"  {label} | {target} | n_min={n_min} | n_features={n_features} | F1_max={max(r['f1_macro_mean'] or 0 for r in target_results):.4f}")
 
     return results
 
@@ -66,7 +69,7 @@ def main() -> None:
     print("\n[BASELINE] Sin mejoras, todos los targets")
     base = run_all(df, use_interactions=False, group_gds=False, label="BASE")
 
-    print("\n[FE] Con interacciones, todos los targets")
+    print("\n[FE] Con 21 interacciones AND dentro de cada grupo semantico")
     with_fe = run_all(df, use_interactions=True, group_gds=False, label="FE")
 
     print("\n[GROUP] GDS con clases agrupadas (5,6,7 -> 'severo')")
@@ -90,7 +93,7 @@ def main() -> None:
                     "modelo": r["model_name"],
                     "n_min": r["n_min"],
                     "k_outer": r["k_outer"],
-                    "n_features": None,
+                    "n_features": r.get("n_features"),
                     "f1_macro_mean": r.get("f1_macro_mean"),
                     "balanced_accuracy_mean": r.get("balanced_accuracy_mean"),
                     "recall_macro_mean": r.get("recall_macro_mean"),
@@ -98,8 +101,6 @@ def main() -> None:
                     "icn": r.get("icn"),
                     "delta_sesgo": r.get("delta_sesgo"),
                 })
-                if r.get("confusion_matrix") is not None:
-                    pass
 
     df_compare = pd.DataFrame(rows)
     df_compare.to_csv(out_dir / "comparison_baseline_vs_improvements.csv", index=False, encoding="utf-8")
@@ -115,10 +116,6 @@ def main() -> None:
                 continue
             best = sub_exp.loc[sub_exp["f1_macro_mean"].idxmax()]
             print(f"  {exp:8s} | mejor: {best['modelo']:25s} | F1={best['f1_macro_mean']:.4f} | ICN={best['icn']:.3f}")
-
-    for name, results in [("BASE", base), ("FE", with_fe), ("GROUP", grouped), ("FE+GROUP", both)]:
-        with open(out_dir / f"results_{name.lower().replace('+', '_')}.json", "w") as f:
-            json.dump(results, f, ensure_ascii=False, indent=2)
 
 
 if __name__ == "__main__":
