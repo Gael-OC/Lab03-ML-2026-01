@@ -6,10 +6,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 
 from data_loader import TARGETS
 
-sns = __import__("seaborn")
 sns.set_theme(style="whitegrid", palette="colorblind", font_scale=1.0)
 
 EXPERIMENTS = ["BASE", "FE", "GROUP", "FE+GROUP"]
