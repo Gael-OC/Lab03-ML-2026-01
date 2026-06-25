@@ -4,7 +4,20 @@ from pathlib import Path
 from typing import Any
 import csv
 import json
-import textwrap
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.platypus import (
+    Image,
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 
 SUMMARY_COLUMNS = [
@@ -26,8 +39,6 @@ SUMMARY_COLUMNS = [
     "best_params_mode",
     "message",
 ]
-
-PLAIN_TABLE_WIDTHS = [21, 14, 14, 14, 14, 8, 8, 8, 8, 25]
 
 
 def write_summary_csv(results_by_target: dict[str, list[dict[str, Any]]], output_path: Path) -> None:
@@ -124,25 +135,124 @@ def write_latex_tables(results_by_target: dict[str, list[dict[str, Any]]], outpu
     output_path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def write_pdf_tables(results_by_target: dict[str, list[dict[str, Any]]], output_path: Path) -> None:
-    pages: list[list[str]] = []
-    current: list[str] = [
-        "Laboratorio 03: resultados de validacion cruzada anidada",
-        "Los 5 clasificadores estan implementados. Se reportan promedios y desviaciones sobre folds externos.",
-        "",
-    ]
+def write_pdf_tables(
+    results_by_target: dict[str, list[dict[str, Any]]],
+    output_path: Path,
+    figures_dir: Path | None = None,
+) -> None:
+    """Genera un PDF con tablas de metricas y, opcionalmente, figuras.
+
+    Usa reportlab, que soporta fuentes TrueType con caracteres
+    acentuados, imagenes raster y tablas con estilos consistentes.
+
+    Si ``figures_dir`` apunta a un directorio que contiene
+    ``f1_macro_heatmap.png`` y ``confusion_matrices.png`` (los
+    archivos que produce ``plots.py``), se incluyen como figuras.
+    """
+    styles = getSampleStyleSheet()
+    title_style = styles["Title"]
+    h2_style = styles["Heading2"]
+    body_style = styles["BodyText"]
+    body_style.fontSize = 9
+    body_style.leading = 12
+
+    doc = SimpleDocTemplate(
+        str(output_path),
+        pagesize=landscape(A4),
+        leftMargin=1.5 * cm,
+        rightMargin=1.5 * cm,
+        topMargin=1.5 * cm,
+        bottomMargin=1.5 * cm,
+        title="Laboratorio 03: resultados de validacion cruzada anidada",
+    )
+
+    story: list = []
+    story.append(Paragraph("Laboratorio 03: resultados", title_style))
+    story.append(Paragraph(
+        "Validacion cruzada anidada con grillas reducidas sobre los seis "
+        "experimentos del laboratorio. Se reportan promedios y desviaciones "
+        "sobre los folds externos, ademas del ICN crudo (formula del PDF, "
+        "comparable entre targets) y el ICN normalizado (util para ordenar "
+        "modelos dentro de un mismo target).",
+        body_style,
+    ))
+    story.append(Spacer(1, 0.5 * cm))
+
+    has_figure = figures_dir is not None and (figures_dir / "f1_macro_heatmap.png").exists()
+
+    if has_figure:
+        story.append(Paragraph("F1 macro por modelo y objetivo", h2_style))
+        story.append(Image(str(figures_dir / "f1_macro_heatmap.png"), width=22 * cm, height=8 * cm))
+        story.append(Spacer(1, 0.5 * cm))
 
     for target, results in results_by_target.items():
-        block = _plain_table_block(target, results)
-        if len(current) + len(block) > 48:
-            pages.append(current)
-            current = []
-        current.extend(block)
-        current.append("")
-    if current:
-        pages.append(current)
+        story.append(Paragraph(f"Experimento {target}", h2_style))
+        distribution = _format_distribution(results[0]["class_distribution"])
+        n_min = results[0]["n_min"]
+        k_outer = results[0]["k_outer"]
+        story.append(Paragraph(
+            f"Distribucion: {distribution}. n_min = {n_min}. k externo = {k_outer}.",
+            body_style,
+        ))
+        story.append(Spacer(1, 0.3 * cm))
 
-    _write_simple_pdf(pages, output_path)
+        story.append(_build_reportlab_table(results))
+        story.append(PageBreak())
+
+    cm_figure = figures_dir / "confusion_matrices.png" if figures_dir else None
+    if cm_figure is not None and cm_figure.exists():
+        story.append(Paragraph("Matrices de confusion (mejor modelo por target)", h2_style))
+        story.append(Image(str(cm_figure), width=22 * cm, height=12 * cm))
+
+    doc.build(story)
+
+
+def _build_reportlab_table(results: list[dict[str, Any]]):
+    """Tabla con la misma informacion que las tablas LaTeX."""
+    header = [
+        "Modelo", "F1 macro", "BalAcc", "Recall", "Precision",
+        "Estab*", "ICN*", "ICN", "Delta sesgo", "Hiperparametros",
+    ]
+    rows: list[list[str]] = [header]
+    for item in results:
+        if not item["implemented"]:
+            rows.append([item["model_name"], "No implementado", *[""] * 8])
+            continue
+        rows.append([
+            item["model_name"],
+            _format_mean_std(item["f1_macro_mean"], item["f1_macro_std"]),
+            _format_float(item["balanced_accuracy_mean"]),
+            _format_float(item["recall_macro_mean"]),
+            _format_float(item["precision_macro_mean"]),
+            _format_float(item["stability_raw"]),
+            _format_float(item["icn_raw"]),
+            _format_float(item["icn"]),
+            _format_float(item.get("delta_sesgo")),
+            item["best_params_mode"],
+        ])
+
+    table = Table(
+        rows,
+        colWidths=[3.4 * cm, 2.6 * cm, 1.8 * cm, 1.8 * cm, 1.8 * cm,
+                   1.5 * cm, 1.5 * cm, 1.5 * cm, 1.8 * cm, 6.0 * cm],
+        repeatRows=1,
+    )
+    style = TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        ("ALIGN", (1, 1), (-2, -1), "CENTER"),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
+        ("TOPPADDING", (0, 0), (-1, 0), 4),
+    ])
+    for row_idx in range(1, len(rows)):
+        if row_idx % 2 == 0:
+            style.add("BACKGROUND", (0, row_idx), (-1, row_idx), colors.whitesmoke)
+    table.setStyle(style)
+    return table
 
 
 def _write_confusion_matrix(target: str, item: dict[str, Any], output_dir: Path) -> None:
@@ -196,118 +306,6 @@ def _latex_row(item: dict[str, Any]) -> str:
         f"{_format_float(item.get('delta_sesgo'))} & "
         f"{latex_escape(item['best_params_mode'])} \\\\"
     )
-
-
-def _plain_table_block(target: str, results: list[dict[str, Any]]) -> list[str]:
-    distribution = _format_distribution(results[0]["class_distribution"])
-    lines = [
-        f"Experimento {target}",
-        f"Distribucion: {distribution} | n_min={results[0]['n_min']} | k_outer={results[0]['k_outer']}",
-        "",
-        _plain_row(
-            ["Modelo", "F1 macro", "BalAcc", "Recall", "Precision", "Estab*", "ICN*", "ICN", "DeltaS", "Estado"],
-            header=True,
-        ),
-        "-" * (sum(PLAIN_TABLE_WIDTHS) + len(PLAIN_TABLE_WIDTHS) - 1),
-        "",
-    ]
-    for item in results:
-        if item["implemented"]:
-            values = [
-                item["model_name"],
-                _format_mean_std(item["f1_macro_mean"], item["f1_macro_std"]),
-                _format_float(item["balanced_accuracy_mean"]),
-                _format_float(item["recall_macro_mean"]),
-                _format_float(item["precision_macro_mean"]),
-                _format_float(item["stability_raw"]),
-                _format_float(item["icn_raw"]),
-                _format_float(item["icn"]),
-                _format_float(item.get("delta_sesgo")),
-                item["best_params_mode"],
-            ]
-        else:
-            values = [item["model_name"], *["No implementado"] * 7, "No implementado"]
-        lines.append(_plain_row(values))
-        if item["implemented"]:
-            for wrapped in textwrap.wrap(f"Hiperparametros mas frecuentes: {item['best_params_mode']}", width=120):
-                lines.append(f"  {wrapped}")
-    return lines
-
-
-def _plain_row(values: list[str], header: bool = False) -> str:
-    cells = []
-    for value, width in zip(values, PLAIN_TABLE_WIDTHS, strict=True):
-        text = str(value)
-        if len(text) > width:
-            text = text[: width - 3] + "..."
-        cells.append(text.ljust(width))
-    row = " ".join(cells)
-    return row.upper() if header else row
-
-
-def _write_simple_pdf(pages: list[list[str]], output_path: Path) -> None:
-    objects: list[bytes] = []
-
-    def add_object(content: bytes) -> int:
-        objects.append(content)
-        return len(objects)
-
-    catalog_id = add_object(b"<< /Type /Catalog /Pages 2 0 R >>")
-    pages_id = add_object(b"")
-    font_id = add_object(b"<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>")
-    page_ids: list[int] = []
-
-    for page_lines in pages:
-        content = _pdf_content_stream(page_lines)
-        content_id = add_object(
-            b"<< /Length " + str(len(content)).encode("ascii") + b" >>\nstream\n" + content + b"\nendstream"
-        )
-        page_id = add_object(
-            (
-                f"<< /Type /Page /Parent {pages_id} 0 R /MediaBox [0 0 842 595] "
-                f"/Resources << /Font << /F1 {font_id} 0 R >> >> /Contents {content_id} 0 R >>"
-            ).encode("ascii")
-        )
-        page_ids.append(page_id)
-
-    kids = " ".join(f"{page_id} 0 R" for page_id in page_ids)
-    objects[pages_id - 1] = f"<< /Type /Pages /Kids [{kids}] /Count {len(page_ids)} >>".encode("ascii")
-    assert catalog_id == 1
-
-    pdf = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
-    offsets = [0]
-    for idx, obj in enumerate(objects, start=1):
-        offsets.append(len(pdf))
-        pdf.extend(f"{idx} 0 obj\n".encode("ascii"))
-        pdf.extend(obj)
-        pdf.extend(b"\nendobj\n")
-
-    xref_offset = len(pdf)
-    pdf.extend(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
-    pdf.extend(b"0000000000 65535 f \n")
-    for offset in offsets[1:]:
-        pdf.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
-    pdf.extend(
-        (
-            f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
-            f"startxref\n{xref_offset}\n%%EOF\n"
-        ).encode("ascii")
-    )
-    output_path.write_bytes(bytes(pdf))
-
-
-def _pdf_content_stream(lines: list[str]) -> bytes:
-    content = ["BT", "/F1 8 Tf", "40 555 Td", "10 TL"]
-    for line in lines:
-        content.append(f"({_pdf_escape(line)}) Tj")
-        content.append("T*")
-    content.append("ET")
-    return "\n".join(content).encode("cp1252", errors="replace")
-
-
-def _pdf_escape(text: str) -> str:
-    safe = str(text).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-    return safe.encode("cp1252", errors="replace").decode("cp1252")
 
 
 def _format_distribution(distribution: dict[int, int]) -> str:

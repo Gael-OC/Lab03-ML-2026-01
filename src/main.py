@@ -96,7 +96,17 @@ def main() -> None:
     write_auxiliary_tables(results_by_target, output_dirs)
     write_warnings(results_by_target, output_dirs["root"] / "advertencias.txt")
     write_latex_tables(results_by_target, tables_dir / "resultados_experimentos.tex")
-    write_pdf_tables(results_by_target, tables_dir / "resultados_experimentos.pdf")
+
+    # El PDF se genera despues de los plots para poder incrustar figuras.
+    figures_dir_for_pdf = output_dirs.get("figures") / "experiments" if "figures" in output_dirs else None
+    if not args.skip_plots:
+        write_pdf_tables(
+            results_by_target,
+            tables_dir / "resultados_experimentos.pdf",
+            figures_dir=figures_dir_for_pdf,
+        )
+    else:
+        write_pdf_tables(results_by_target, tables_dir / "resultados_experimentos.pdf")
 
     # Analisis avanzado
     if not args.skip_analysis:
