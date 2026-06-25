@@ -240,7 +240,7 @@ def analyze_hyperparameter_stability(results_by_target: dict, output_dir: Path) 
         if pivot.empty:
             continue
 
-        fig, ax = plt.subplots(figsize=(max(6, len(pivot.columns) * 1.5), max(4, len(pivot.index) * 0.8)))
+        fig, ax = plt.subplots(figsize=(max(6, len(pivot.columns) * 1.5), max(4, len(pivot.index) * 0.8)), constrained_layout=True)
         sns.heatmap(
             pivot,
             annot=True,
@@ -251,7 +251,6 @@ def analyze_hyperparameter_stability(results_by_target: dict, output_dir: Path) 
             ax=ax,
         )
         ax.set_title(f"Estabilidad de hiperparámetros — {target}", fontweight="bold", fontsize=12)
-        fig.tight_layout()
         fig.savefig(output_dir / f"hyperparam_stability_{target}.png", dpi=300, bbox_inches="tight")
         plt.close(fig)
 
