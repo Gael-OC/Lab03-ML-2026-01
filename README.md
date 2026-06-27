@@ -626,13 +626,13 @@ Conclusiones:
 
 `outputs/figures/comparisons/f1_comparison_baseline_vs_improvements.png` muestra esta comparación visualmente.
 
-**Decisión final:** se mantiene el pipeline BASE con `k_outer=2` y se declara la limitación en el informe, en lugar de agrupar clases artificialmente. La razón es que agrupar clases cambia la semántica del problema y oculta el hecho de que `GDS` con 7 clases es estructuralmente difícil.
+**Decisión final:** se mantiene el pipeline BASE con `k_outer=2` y se declara la limitación como evidencia exploratoria, en lugar de agrupar clases artificialmente. La razón es que agrupar clases cambia la semántica del problema y oculta el hecho de que `GDS` con 7 clases es estructuralmente difícil.
 
 ---
 
 ## 19.1 Costo computacional e interpretabilidad
 
-Más allá de la métrica, el PDF pide comparar modelos por **equilibrio entre desempeño, interpretabilidad y estabilidad**. La tabla resume el costo de entrenamiento por fold externo (medido sobre `GDS_R2`, n=895 entrenamiento, n=224 test) y el tipo de explicación que cada modelo ofrece:
+Más allá de la métrica, se comparan los modelos por **equilibrio entre desempeño, interpretabilidad y estabilidad**. La tabla resume el costo de entrenamiento por fold externo (medido sobre `GDS_R2`, n=895 entrenamiento, n=224 test) y el tipo de explicación que cada modelo ofrece:
 
 | Modelo              | Fit time (s) | Tipo de explicación                            | Hiperparámetros interpretables |
 |---------------------|-------------:|------------------------------------------------|--------------------------------|
@@ -649,7 +649,7 @@ Más allá de la métrica, el PDF pide comparar modelos por **equilibrio entre d
 - **SVM RBF** mapea a un espacio de dimensión infinita, por lo que no es directamente interpretable. Es un modelo de "caja negra" cuyo valor está en el desempeño, no en la explicación.
 - **K-NN** no tiene parámetros aprendidos: cada predicción es un voto de los k vecinos más cercanos. Es localmente interpretable ("¿qué casos se parecen a este?") pero globalmente no entrega una regla.
 
-**Implicación para el informe:** si el uso final es clínico, el Árbol y la Regresión Logística son los más defendibles, porque su predicción puede ser auditada. Si el uso es de cribado (screening) donde solo importa detectar deterioro, SVM RBF es la mejor opción por desempeño. K-NN queda en un punto intermedio: tiene buen F1 pero su comportamiento depende fuertemente de la métrica de distancia, lo que lo hace menos confiable para producción.
+**Implicación práctica:** si el uso final es clínico, el Árbol y la Regresión Logística son los más defendibles, porque su predicción puede ser auditada. Si el uso es de cribado (screening) donde solo importa detectar deterioro, SVM RBF es la mejor opción por desempeño. K-NN queda en un punto intermedio: tiene buen F1 pero su comportamiento depende fuertemente de la métrica de distancia, lo que lo hace menos confiable para producción.
 
 ## 19.2 Efecto de `class_weight="balanced"`
 
@@ -733,7 +733,7 @@ Sí en interpretabilidad, no en desempeño. Los árboles resultantes tienen prof
 
 ### ¿K-NN es estable o depende demasiado de k y la distancia?
 
-Depende. K-NN gana en F1 macro en 3 targets (GDS_R1, GDS_R3, GDS_R5), pero en todos ellos su balanced accuracy es la peor del lote, lo que indica que ignora la clase minoritaria. La configuración ganadora varía entre folds sin un patrón claro (n_neighbors=3 a n_neighbors=11, euclidean/manhattan, uniform/distance), lo que lo hace el modelo menos confiable para producción. Para el informe, vale la pena mostrar que K-NN tiene buen F1 pero no es robusto al desbalance, a diferencia de los SVM con `class_weight="balanced"`.
+Depende. K-NN gana en F1 macro en 3 targets (GDS_R1, GDS_R3, GDS_R5), pero en todos ellos su balanced accuracy es la peor del lote, lo que indica que ignora la clase minoritaria. La configuración ganadora varía entre folds sin un patrón claro (n_neighbors=3 a n_neighbors=11, euclidean/manhattan, uniform/distance), lo que lo hace el modelo menos confiable para producción. K-NN tiene buen F1 pero no es robusto al desbalance, a diferencia de los SVM con `class_weight="balanced"`.
 
 ### ¿Qué objetivo es el más difícil de predecir y por qué?
 
@@ -755,20 +755,4 @@ Tres decisiones explican la mayor parte de la varianza observada:
 2. **`class_weight="balanced"`** evita que los modelos predigan siempre la clase mayoritaria. Sin esto, un SVM lineal sobre `GDS_R1` predeciría siempre clase 1, accuracy 0.85, F1 macro 0.16. Con esto, F1 macro sube a 0.65-0.69.
 3. **Grillas reducidas (≤20 combinaciones por modelo)** limitan el riesgo de selección optimista de hiperparámetros. Esto es particularmente importante en un dataset donde k=5 da solo 5 puntos para evaluar el fold externo, y donde una grilla más grande permitiría "ganar" por azar.
 
-### Trabajo futuro
-
-Tres líneas de continuación son naturales para extender este laboratorio:
-
-1. **Modelos ordinales**: usar regresión logística ordinal o `mord` para explotar el orden natural de la escala GDS, en lugar de tratarla como clasificación nominal.
-2. **Técnicas de remuestreo para desbalance**: probar SMOTE, undersampling o `class_weight` por clase, en lugar del balanceo global, para ver si la clase 6 o 7 de GDS se pueden rescatar.
-3. **Validación con datos externos**: el modelo se ajustó y evaluó sobre el mismo dataset; una validación con datos de otro centro clínico sería el siguiente paso para confirmar la generalización.
-
-### Recomendaciones para el informe
-
-- **Reportar siempre F1 macro, balanced accuracy, recall macro y matriz de confusión.** Accuracy es engañosa en problemas desbalanceados.
-- **Discutir explícitamente las clases con soporte muy bajo** (clase 6 y 7 de GDS) y declarar que sus resultados son evidencia exploratoria.
-- **Justificar el uso de `class_weight="balanced"` y de `k_outer = min(5, n_min)`** en la sección de metodología.
-- **Mostrar al menos una matriz de confusión por target** (sección 15.1 ya las tiene listas) para que el lector vea dónde fallan los modelos.
-- **Distinguir entre "ganador por F1" y "ganador por ICN"** cuando los rankings no coincidan (caso GDS_R4), porque el criterio de selección cambia la conclusión.
-
-La reproducibilidad está garantizada con semillas fijas (outer=42, inner=123) y la ejecución completa toma ~45 segundos en un servidor con `n_jobs=-1`.
+La reproducibilidad está garantizada con semillas fijas (outer=42, inner=123).
